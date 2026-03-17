@@ -188,22 +188,20 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     texto.startsWith('/') && quickRepliesFiltradas.length > 0 ? (setQuickReplyAberto(true), setQuickReplyIdx(0)) : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  if (!ticketAtivo) return (<div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]"><EmptyState icone={MessageSquare} titulo="Selecione um chamado" descricao="Escolha um chamado na lista ao lado" /></div>);
-
   // Finalizar chamado
   const finalizarMutation = useMutation({
-    mutationFn: () => api.post(`/api/tickets/${ticketAtivo.id}/resolver`),
-    onSuccess: (data) => { selecionarTicket(data); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado finalizado!'); },
+    mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`),
+    onSuccess: (data) => { selecionarTicket(data); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo?.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado finalizado!'); },
     onError: (err) => toast.error(err.message),
   });
 
-  // Transferir chamado (modal simples)
+  // Transferir chamado
   const [menuTransferir, setMenuTransferir] = useState(false);
   const { data: todosUsuarios } = useQuery({ queryKey: ['usuarios'], queryFn: () => api.get('/api/users'), enabled: menuTransferir });
 
   const transferirMutation = useMutation({
-    mutationFn: ({ usuario_id }) => api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id }),
-    onSuccess: (data) => { selecionarTicket(data); setMenuTransferir(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado transferido!'); },
+    mutationFn: ({ usuario_id }) => api.post(`/api/tickets/${ticketAtivo?.id}/transferir`, { usuario_id }),
+    onSuccess: (data) => { selecionarTicket(data); setMenuTransferir(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo?.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado transferido!'); },
     onError: (err) => toast.error(err.message),
   });
 
@@ -216,6 +214,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   }, [ticketAtivo?.id]);
 
   const atendentesTransferir = (todosUsuarios?.usuarios || todosUsuarios || []).filter(u => u.id !== usuario?.id && u.ativo !== false);
+
+  if (!ticketAtivo) return (<div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]"><EmptyState icone={MessageSquare} titulo="Selecione um chamado" descricao="Escolha um chamado na lista ao lado" /></div>);
 
   return (
     <div className="flex-1 flex flex-col bg-[var(--color-bg)] min-w-0">
