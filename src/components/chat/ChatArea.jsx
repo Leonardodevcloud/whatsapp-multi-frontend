@@ -7,7 +7,7 @@ import { Avatar, Button, Skeleton, EmptyState } from '../ui';
 import {
   Send, StickyNote, Check, CheckCheck, Clock, AlertCircle,
   MessageSquare, X, Download, Play, Zap, Mic, Plus,
-  Image, FileText, Video, MapPin, ArrowRightLeft, CheckCircle2, Info,
+  Image, FileText, Video, MapPin, ArrowRightLeft, CheckCircle2, Info, Sparkles,
 } from 'lucide-react';
 import { cn, formatarDataMensagem } from '../../lib/utils';
 import api from '../../lib/api';
@@ -41,6 +41,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [menuAnexo, setMenuAnexo] = useState(false);
   const [digitando, setDigitando] = useState(null);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
+  const [melhorandoTexto, setMelhorandoTexto] = useState(false);
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -347,6 +348,35 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             <textarea ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'} rows={1}
               className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-32 border-0" style={{minHeight:'40px'}} />
+
+            {/* Botão IA — melhorar texto */}
+            {texto.trim().length > 3 && (
+              <button
+                onClick={async () => {
+                  if (melhorandoTexto) return;
+                  setMelhorandoTexto(true);
+                  try {
+                    const result = await api.post('/api/ai/melhorar-texto', { texto: texto.trim() });
+                    if (result.textoMelhorado && result.textoMelhorado !== texto.trim()) {
+                      setTexto(result.textoMelhorado);
+                      toast.success('Texto melhorado!');
+                    } else {
+                      toast('Texto já está bom!', { icon: '👍' });
+                    }
+                  } catch {
+                    toast.error('IA indisponível');
+                  } finally {
+                    setMelhorandoTexto(false);
+                  }
+                }}
+                disabled={melhorandoTexto}
+                title="Melhorar texto com IA"
+                className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors',
+                  melhorandoTexto ? 'animate-spin text-primary' : 'text-[var(--color-text-muted)] hover:bg-primary/10 hover:text-primary')}
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            )}
 
             {texto.trim() ? (
               <Button size="icon" onClick={handleEnviar} loading={enviarMutation.isPending} disabled={!texto.trim()} className={cn('rounded-xl shrink-0', modoNota && 'bg-amber-500 hover:bg-amber-600')}><Send className="w-4 h-4" /></Button>

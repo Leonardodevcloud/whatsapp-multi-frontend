@@ -9,24 +9,24 @@ import api from '../../lib/api';
 import toast from 'react-hot-toast';
 
 export default function AiPanel({ ticketId, onUsarSugestao }) {
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false); // Começa fechado
   const [copiado, setCopiado] = useState(false);
   const [abaAi, setAbaAi] = useState('sugestao');
 
   // Sugestão de resposta
   const { data: sugestaoData, isLoading: loadingSugestao, refetch: refetchSugestao } = useQuery({
     queryKey: ['ai-sugestao', ticketId],
-    queryFn: () => api.get(`/api/ai/sugestao/${ticketId}`),
-    enabled: !!ticketId && abaAi === 'sugestao',
-    staleTime: 300000, // 5 min
+    queryFn: () => api.get(`/api/ai/sugestao/${ticketId}`).catch(() => ({ sugestao: null })),
+    enabled: !!ticketId && expandido && abaAi === 'sugestao',
+    staleTime: 300000,
     retry: false,
   });
 
   // Resumo
   const { data: resumoData, isLoading: loadingResumo, refetch: refetchResumo } = useQuery({
     queryKey: ['ai-resumo', ticketId],
-    queryFn: () => api.get(`/api/ai/resumo/${ticketId}`),
-    enabled: !!ticketId && abaAi === 'resumo',
+    queryFn: () => api.get(`/api/ai/resumo/${ticketId}`).catch(() => ({ resumo: null })),
+    enabled: !!ticketId && expandido && abaAi === 'resumo',
     staleTime: 600000,
     retry: false,
   });
@@ -34,13 +34,11 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
   // Sentimento
   const { data: sentimentoData, isLoading: loadingSentimento } = useQuery({
     queryKey: ['ai-sentimento', ticketId],
-    queryFn: () => api.get(`/api/ai/sentimento/${ticketId}`),
-    enabled: !!ticketId && abaAi === 'sentimento',
+    queryFn: () => api.get(`/api/ai/sentimento/${ticketId}`).catch(() => null),
+    enabled: !!ticketId && expandido && abaAi === 'sentimento',
     staleTime: 300000,
     retry: false,
   });
-
-  if (sugestaoData?.desativada) return null;
 
   const handleCopiar = (texto) => {
     navigator.clipboard.writeText(texto);
@@ -51,7 +49,7 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
   const handleUsarSugestao = () => {
     if (sugestaoData?.sugestao && onUsarSugestao) {
       onUsarSugestao(sugestaoData.sugestao);
-      toast.success('Sugestão inserida no campo de texto');
+      toast.success('Sugestão inserida');
     }
   };
 
@@ -63,7 +61,7 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
 
   return (
     <div className="border-t border-primary/20 bg-primary/[0.03] dark:bg-primary/[0.05]">
-      {/* Header */}
+      {/* Header — sempre visível */}
       <button
         onClick={() => setExpandido(!expandido)}
         className="w-full flex items-center justify-between px-4 py-2 text-xs font-medium text-primary hover:bg-primary/5 transition-colors"
@@ -89,9 +87,7 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
                 onClick={() => setAbaAi(id)}
                 className={cn(
                   'flex items-center gap-1 px-2.5 py-1 rounded-md text-2xs font-medium transition-all',
-                  abaAi === id
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]'
+                  abaAi === id ? 'bg-primary/10 text-primary' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]'
                 )}
               >
                 <Icone className="w-3 h-3" /> {label}
@@ -99,7 +95,7 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
             ))}
           </div>
 
-          {/* Conteúdo */}
+          {/* Sugestão */}
           {abaAi === 'sugestao' && (
             <div>
               {loadingSugestao ? (
@@ -116,27 +112,29 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
                     <Button size="sm" className="text-2xs h-7" onClick={handleUsarSugestao}>
                       Usar resposta
                     </Button>
-                    <button
-                      onClick={() => handleCopiar(sugestaoData.sugestao)}
-                      className="flex items-center gap-1 text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors"
-                    >
+                    <button onClick={() => handleCopiar(sugestaoData.sugestao)}
+                      className="flex items-center gap-1 text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors">
                       {copiado ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                       {copiado ? 'Copiado' : 'Copiar'}
                     </button>
-                    <button
-                      onClick={() => refetchSugestao()}
-                      className="text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors ml-auto"
-                    >
+                    <button onClick={() => refetchSugestao()}
+                      className="text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors ml-auto">
                       Gerar nova
                     </button>
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[var(--color-text-muted)]">Sem sugestão disponível</p>
+                <div className="text-center py-3">
+                  <p className="text-xs text-[var(--color-text-muted)] mb-2">Clique para gerar uma sugestão de resposta</p>
+                  <Button size="sm" className="text-2xs h-7" onClick={() => refetchSugestao()}>
+                    <Sparkles className="w-3 h-3" /> Gerar sugestão
+                  </Button>
+                </div>
               )}
             </div>
           )}
 
+          {/* Resumo */}
           {abaAi === 'resumo' && (
             <div>
               {loadingResumo ? (
@@ -150,28 +148,29 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
                   <p className="text-xs text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">
                     {resumoData.resumo}
                   </p>
-                  <button
-                    onClick={() => refetchResumo()}
-                    className="text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors mt-2"
-                  >
+                  <button onClick={() => refetchResumo()}
+                    className="text-2xs text-[var(--color-text-muted)] hover:text-primary transition-colors mt-2">
                     Atualizar resumo
                   </button>
                 </div>
               ) : (
-                <p className="text-xs text-[var(--color-text-muted)]">Sem resumo disponível</p>
+                <div className="text-center py-3">
+                  <p className="text-xs text-[var(--color-text-muted)] mb-2">Clique para gerar um resumo da conversa</p>
+                  <Button size="sm" className="text-2xs h-7" onClick={() => refetchResumo()}>
+                    <FileText className="w-3 h-3" /> Gerar resumo
+                  </Button>
+                </div>
               )}
             </div>
           )}
 
+          {/* Sentimento */}
           {abaAi === 'sentimento' && (
             <div>
               {loadingSentimento ? (
                 <Skeleton className="h-12 w-full" />
-              ) : sentimentoData ? (
-                <div className={cn(
-                  'rounded-lg p-3 flex items-center gap-3',
-                  sentimentoCores[sentimentoData.sentimento]?.bg || sentimentoCores.neutro.bg
-                )}>
+              ) : sentimentoData?.sentimento ? (
+                <div className={cn('rounded-lg p-3 flex items-center gap-3', sentimentoCores[sentimentoData.sentimento]?.bg || sentimentoCores.neutro.bg)}>
                   <span className="text-2xl">{sentimentoCores[sentimentoData.sentimento]?.emoji || '😐'}</span>
                   <div>
                     <p className={cn('text-sm font-semibold capitalize', sentimentoCores[sentimentoData.sentimento]?.text)}>
@@ -183,7 +182,7 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-[var(--color-text-muted)]">Sem dados</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Sem dados de sentimento</p>
               )}
             </div>
           )}
