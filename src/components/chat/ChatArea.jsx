@@ -1,12 +1,13 @@
 // src/components/chat/ChatArea.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
 import { Avatar, Button, Skeleton, EmptyState } from '../ui';
 import {
   Send, StickyNote, Check, CheckCheck, Clock, AlertCircle,
-  MessageSquare, X, Download, Play, Zap,
+  MessageSquare, X, Download, Play, Zap, Mic, Square, Plus,
+  Image, FileText, Video, MapPin,
 } from 'lucide-react';
 import { cn, formatarDataMensagem } from '../../lib/utils';
 import api from '../../lib/api';
@@ -24,17 +25,23 @@ export default function ChatArea() {
   const [lightbox, setLightbox] = useState(null);
   const [quickReplyAberto, setQuickReplyAberto] = useState(false);
   const [quickReplyIdx, setQuickReplyIdx] = useState(0);
+  const [gravando, setGravando] = useState(false);
+  const [tempoGravacao, setTempoGravacao] = useState(0);
+  const [menuAnexo, setMenuAnexo] = useState(false);
+  const [digitando, setDigitando] = useState(null); // { telefone, acao }
   const chatRef = useRef(null);
   const inputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const timerGravacaoRef = useRef(null);
 
-  // Mensagens com polling 3s
+  // Mensagens polling 3s
   const { data, isLoading } = useQuery({
     queryKey: ['mensagens', ticketAtivo?.id],
     queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=100`),
     enabled: !!ticketAtivo?.id,
     refetchInterval: 3000,
   });
-
   const mensagens = data?.mensagens || [];
 
   // Respostas rápidas
@@ -43,14 +50,13 @@ export default function ChatArea() {
     queryFn: () => api.get('/api/quick-replies'),
   });
 
-  // Filtrar respostas pelo texto digitado
   const quickRepliesFiltradas = (respostasRapidas || []).filter(r => {
     if (!texto.startsWith('/')) return false;
     const busca = texto.slice(1).toLowerCase();
     return r.atalho.toLowerCase().includes(busca) || r.titulo.toLowerCase().includes(busca);
   });
 
-  // Scroll automático
+  // Scroll
   const prevCountRef = useRef(0);
   useEffect(() => {
     if (mensagens.length > prevCountRef.current && chatRef.current) {
@@ -59,25 +65,30 @@ export default function ChatArea() {
     prevCountRef.current = mensagens.length;
   }, [mensagens.length]);
 
-  // WebSocket
+  // WebSocket — mensagens + digitando
   useEffect(() => {
     if (!ticketAtivo?.id) return;
-    const cleanup = wsClient.on('mensagem:nova', (dados) => {
+    const cleanupMsg = wsClient.on('mensagem:nova', (dados) => {
       if (dados.ticket_id === ticketAtivo.id) {
         queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
       }
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['tickets-contadores'] });
     });
-    return cleanup;
+
+    const cleanupTyping = wsClient.on('contato:digitando', (dados) => {
+      setDigitando(dados);
+      // Limpar indicador após 5s
+      setTimeout(() => setDigitando(null), 5000);
+    });
+
+    return () => { cleanupMsg(); cleanupTyping(); };
   }, [ticketAtivo?.id]);
 
-  // Enviar
+  // Enviar texto
   const enviarMutation = useMutation({
     mutationFn: async () => {
-      if (modoNota) {
-        return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: texto.trim() });
-      }
+      if (modoNota) return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: texto.trim() });
       return api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: texto.trim() });
     },
     onSuccess: () => {
@@ -93,7 +104,71 @@ export default function ChatArea() {
     enviarMutation.mutate();
   };
 
-  // Selecionar resposta rápida
+  // ============ GRAVAÇÃO DE ÁUDIO ============
+  const iniciarGravacao = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result;
+          try {
+            await api.post('/api/whatsapp/enviar-audio', {
+              ticket_id: ticketAtivo.id,
+              audio_base64: base64,
+            });
+            queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+            queryClient.invalidateQueries({ queryKey: ['tickets'] });
+            toast.success('Áudio enviado!');
+          } catch (err) {
+            toast.error('Erro ao enviar áudio');
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setGravando(true);
+      setTempoGravacao(0);
+      timerGravacaoRef.current = setInterval(() => setTempoGravacao(t => t + 1), 1000);
+    } catch {
+      toast.error('Permissão de microfone negada');
+    }
+  };
+
+  const pararGravacao = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setGravando(false);
+    if (timerGravacaoRef.current) clearInterval(timerGravacaoRef.current);
+  };
+
+  const cancelarGravacao = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream?.getTracks().forEach(t => t.stop());
+    }
+    setGravando(false);
+    if (timerGravacaoRef.current) clearInterval(timerGravacaoRef.current);
+    audioChunksRef.current = [];
+  };
+
+  const formatarTempoGravacao = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
+  // Quick reply
   const selecionarQuickReply = (resposta) => {
     setTexto(resposta.corpo);
     setQuickReplyAberto(false);
@@ -101,43 +176,18 @@ export default function ChatArea() {
   };
 
   const handleKeyDown = (e) => {
-    // Navegação nas respostas rápidas
     if (quickReplyAberto && quickRepliesFiltradas.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setQuickReplyIdx((prev) => Math.min(prev + 1, quickRepliesFiltradas.length - 1));
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setQuickReplyIdx((prev) => Math.max(prev - 1, 0));
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        selecionarQuickReply(quickRepliesFiltradas[quickReplyIdx]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        setQuickReplyAberto(false);
-        return;
-      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setQuickReplyIdx(i => Math.min(i + 1, quickRepliesFiltradas.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setQuickReplyIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selecionarQuickReply(quickRepliesFiltradas[quickReplyIdx]); return; }
+      if (e.key === 'Escape') { setQuickReplyAberto(false); return; }
     }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleEnviar();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEnviar(); }
   };
 
-  // Detectar / pra abrir respostas rápidas
   useEffect(() => {
-    if (texto.startsWith('/') && quickRepliesFiltradas.length > 0) {
-      setQuickReplyAberto(true);
-      setQuickReplyIdx(0);
-    } else {
-      setQuickReplyAberto(false);
-    }
+    if (texto.startsWith('/') && quickRepliesFiltradas.length > 0) { setQuickReplyAberto(true); setQuickReplyIdx(0); }
+    else { setQuickReplyAberto(false); }
   }, [texto, quickRepliesFiltradas.length]);
 
   if (!ticketAtivo) {
@@ -156,16 +206,22 @@ export default function ChatArea() {
           <Avatar nome={ticketAtivo.contato_nome} src={ticketAtivo.contato_avatar} size="md" />
           <div className="min-w-0">
             <h3 className="text-sm font-semibold truncate">{ticketAtivo.contato_nome || ticketAtivo.contato_telefone}</h3>
-            <p className="text-2xs text-[var(--color-text-muted)]">#{ticketAtivo.protocolo}</p>
+            <p className="text-2xs text-[var(--color-text-muted)]">
+              {digitando?.acao === 'composing' ? (
+                <span className="text-green-500 animate-pulse">digitando...</span>
+              ) : digitando?.acao === 'recording' ? (
+                <span className="text-red-500 animate-pulse">gravando áudio...</span>
+              ) : (
+                `#${ticketAtivo.protocolo}`
+              )}
+            </p>
           </div>
         </div>
         <span className={cn('px-2 py-0.5 rounded text-xs font-medium',
           ticketAtivo.status === 'pendente' ? 'bg-amber-100 text-amber-700' :
           ticketAtivo.status === 'aberto' ? 'bg-blue-100 text-blue-700' :
           'bg-neutral-100 text-neutral-600'
-        )}>
-          {ticketAtivo.status}
-        </span>
+        )}>{ticketAtivo.status}</span>
       </div>
 
       {/* Mensagens */}
@@ -178,26 +234,17 @@ export default function ChatArea() {
               </div>
             ))}
           </div>
-        ) : (
-          mensagens.map((msg) => <ChatBubble key={msg.id} mensagem={msg} onLightbox={setLightbox} />)
-        )}
+        ) : mensagens.map((msg) => <ChatBubble key={msg.id} mensagem={msg} onLightbox={setLightbox} />)}
       </div>
 
-      {/* IA */}
       <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
       {/* Quick replies popup */}
       {quickReplyAberto && quickRepliesFiltradas.length > 0 && (
         <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] max-h-48 overflow-y-auto">
           {quickRepliesFiltradas.map((r, i) => (
-            <button
-              key={r.id}
-              onClick={() => selecionarQuickReply(r)}
-              className={cn(
-                'w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors',
-                i === quickReplyIdx ? 'bg-primary/10' : 'hover:bg-[var(--color-surface-elevated)]'
-              )}
-            >
+            <button key={r.id} onClick={() => selecionarQuickReply(r)}
+              className={cn('w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors', i === quickReplyIdx ? 'bg-primary/10' : 'hover:bg-[var(--color-surface-elevated)]')}>
               <Zap className="w-4 h-4 text-primary mt-0.5 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -211,7 +258,7 @@ export default function ChatArea() {
         </div>
       )}
 
-      {/* Input */}
+      {/* Input area */}
       <div className={cn(
         'border-t px-4 py-3 bg-[var(--color-surface)] shrink-0',
         modoNota ? 'border-t-amber-400 bg-amber-50/50 dark:bg-amber-900/10' : 'border-[var(--color-border)]'
@@ -219,43 +266,97 @@ export default function ChatArea() {
         {modoNota && (
           <div className="flex items-center gap-1.5 mb-2">
             <StickyNote className="w-3.5 h-3.5 text-amber-600" />
-            <span className="text-xs font-medium text-amber-600">Nota interna — não será enviada ao cliente</span>
+            <span className="text-xs font-medium text-amber-600">Nota interna</span>
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <button
-            onClick={() => setModoNota(!modoNota)}
-            title="Nota interna"
-            className={cn(
-              'w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0',
-              modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]'
+
+        {/* Gravando áudio */}
+        {gravando ? (
+          <div className="flex items-center gap-3">
+            <button onClick={cancelarGravacao} className="w-9 h-9 rounded-full bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200">
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex-1 flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm font-mono text-red-600">{formatarTempoGravacao(tempoGravacao)}</span>
+              <div className="flex-1 h-1 bg-red-100 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 rounded-full animate-pulse" style={{ width: `${Math.min((tempoGravacao / 120) * 100, 100)}%` }} />
+              </div>
+            </div>
+            <button onClick={pararGravacao} className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary/90">
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            {/* Nota interna */}
+            <button onClick={() => setModoNota(!modoNota)} title="Nota interna"
+              className={cn('w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0',
+                modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]')}>
+              <StickyNote className="w-4 h-4" />
+            </button>
+
+            {/* Botão + anexo */}
+            <div className="relative shrink-0">
+              <button onClick={() => setMenuAnexo(!menuAnexo)} title="Anexar mídia"
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)] transition-colors">
+                <Plus className="w-4 h-4" />
+              </button>
+              {menuAnexo && (
+                <div className="absolute bottom-12 left-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg py-2 min-w-[160px] z-50">
+                  <p className="px-3 py-1 text-2xs text-[var(--color-text-muted)] font-medium uppercase">Anexar</p>
+                  {[
+                    { icon: Image, label: 'Foto', accept: 'image/*' },
+                    { icon: Video, label: 'Vídeo', accept: 'video/*' },
+                    { icon: FileText, label: 'Documento', accept: '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv' },
+                  ].map(({ icon: Icon, label, accept }) => (
+                    <label key={label} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--color-surface-elevated)] transition-colors">
+                      <Icon className="w-4 h-4 text-primary" />
+                      {label}
+                      <input type="file" accept={accept} className="hidden" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          toast(`Envio de ${label.toLowerCase()} será implementado em breve`, { icon: '🚧' });
+                        }
+                        setMenuAnexo(false);
+                        e.target.value = '';
+                      }} />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <textarea
+              ref={inputRef}
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
+              rows={1}
+              className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-32 border-0"
+              style={{ minHeight: '40px' }}
+            />
+
+            {/* Enviar ou gravar */}
+            {texto.trim() ? (
+              <Button size="icon" onClick={handleEnviar} loading={enviarMutation.isPending} disabled={!texto.trim()}
+                className={cn('rounded-xl shrink-0', modoNota && 'bg-amber-500 hover:bg-amber-600')}>
+                <Send className="w-4 h-4" />
+              </Button>
+            ) : (
+              <button onClick={iniciarGravacao} title="Gravar áudio"
+                className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors shrink-0">
+                <Mic className="w-4 h-4" />
+              </button>
             )}
-          >
-            <StickyNote className="w-4 h-4" />
-          </button>
-
-          <textarea
-            ref={inputRef}
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
-            rows={1}
-            className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-32 border-0"
-            style={{ minHeight: '40px' }}
-          />
-
-          <Button
-            size="icon"
-            onClick={handleEnviar}
-            loading={enviarMutation.isPending}
-            disabled={!texto.trim()}
-            className={cn('rounded-xl shrink-0', modoNota && 'bg-amber-500 hover:bg-amber-600')}
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Fechar menu anexo ao clicar fora */}
+      {menuAnexo && <div className="fixed inset-0 z-40" onClick={() => setMenuAnexo(false)} />}
 
       {/* Lightbox */}
       {lightbox && <Lightbox url={lightbox.url} tipo={lightbox.tipo} onFechar={() => setLightbox(null)} />}
@@ -274,22 +375,15 @@ function Lightbox({ url, tipo, onFechar }) {
   }, [onFechar]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center animate-fade-in" onClick={onFechar}>
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center" onClick={onFechar}>
       <div className="absolute top-4 right-4 flex gap-2 z-10">
         <a href={url} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-           className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
-          <Download className="w-5 h-5 text-white" />
-        </a>
-        <button onClick={onFechar} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
-          <X className="w-5 h-5 text-white" />
-        </button>
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"><Download className="w-5 h-5 text-white" /></a>
+        <button onClick={onFechar} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"><X className="w-5 h-5 text-white" /></button>
       </div>
       <div onClick={(e) => e.stopPropagation()} className="max-w-[90vw] max-h-[90vh]">
-        {tipo === 'video' ? (
-          <video controls autoPlay className="max-w-full max-h-[90vh] rounded-lg"><source src={url} /></video>
-        ) : (
-          <img src={url} alt="Mídia" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
-        )}
+        {tipo === 'video' ? (<video controls autoPlay className="max-w-full max-h-[90vh] rounded-lg"><source src={url} /></video>)
+          : (<img src={url} alt="Mídia" className="max-w-full max-h-[90vh] object-contain rounded-lg" />)}
       </div>
     </div>
   );
@@ -303,21 +397,14 @@ function ChatBubble({ mensagem, onLightbox }) {
   const participante = nome_participante || nomeParticipante;
 
   if (tipo === 'sistema') {
-    return (
-      <div className="flex justify-center py-2">
-        <span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-3 py-1 rounded-full">{corpo}</span>
-      </div>
-    );
+    return (<div className="flex justify-center py-2"><span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] px-3 py-1 rounded-full">{corpo}</span></div>);
   }
 
   if (is_internal) {
     return (
       <div className="flex justify-end py-0.5">
         <div className="max-w-[75%] rounded-2xl rounded-br-md px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-          <div className="flex items-center gap-1.5 mb-1">
-            <StickyNote className="w-3 h-3 text-amber-600" />
-            <span className="text-2xs font-medium text-amber-600">Nota — {usuario_nome}</span>
-          </div>
+          <div className="flex items-center gap-1.5 mb-1"><StickyNote className="w-3 h-3 text-amber-600" /><span className="text-2xs font-medium text-amber-600">Nota — {usuario_nome}</span></div>
           <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-wrap break-words">{corpo}</p>
           <span className="text-2xs text-amber-500 mt-1 block text-right">{formatarDataMensagem(criado_em)}</span>
         </div>
@@ -330,8 +417,7 @@ function ChatBubble({ mensagem, onLightbox }) {
   return (
     <div className={cn('flex py-0.5', enviada ? 'justify-end' : 'justify-start')}>
       <div className={cn('max-w-[75%] rounded-2xl overflow-hidden',
-        enviada ? 'bg-primary text-white rounded-br-md' : 'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md'
-      )}>
+        enviada ? 'bg-primary text-white rounded-br-md' : 'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
         {!enviada && (participante || contato_nome) && (
           <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante || contato_nome}</span>
         )}
@@ -346,50 +432,65 @@ function ChatBubble({ mensagem, onLightbox }) {
 }
 
 // ============================================================
-// MediaContent
+// MediaContent — com localização clicável
 // ============================================================
 function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox }) {
   switch (tipo) {
     case 'imagem':
       return (<div>
-        {mediaUrl ? (
-          <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'imagem' })} className="block cursor-pointer">
-            <img src={mediaUrl} alt="Imagem" className="max-w-full max-h-64 object-cover hover:opacity-90 transition-opacity" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
-          </button>
-        ) : (<div className="px-4 pt-2 flex items-center gap-2"><span className="text-lg">📷</span><span className="text-sm opacity-80">Imagem</span></div>)}
+        {mediaUrl ? (<button onClick={() => onLightbox({ url: mediaUrl, tipo: 'imagem' })} className="block cursor-pointer">
+          <img src={mediaUrl} alt="Imagem" className="max-w-full max-h-64 object-cover hover:opacity-90 transition-opacity" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+        </button>) : (<div className="px-4 pt-2 flex items-center gap-2"><span>📷</span><span className="text-sm opacity-80">Imagem</span></div>)}
         {corpo && corpo !== '📷 Imagem' && <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}
       </div>);
 
     case 'audio':
       return (<div className="px-4 pt-2">
         {mediaUrl ? (<audio controls className="max-w-full" style={{ minWidth: '220px' }}><source src={mediaUrl} type="audio/ogg" /><source src={mediaUrl} type="audio/mpeg" /></audio>)
-        : (<div className="flex items-center gap-2"><span className="text-lg">🎵</span><span className="text-sm opacity-80">Áudio</span></div>)}
+          : (<div className="flex items-center gap-2"><span>🎵</span><span className="text-sm opacity-80">Áudio</span></div>)}
       </div>);
 
     case 'video':
       return (<div>
-        {mediaUrl ? (
-          <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })} className="relative block cursor-pointer group">
-            <video preload="metadata" className="max-w-full max-h-48"><source src={mediaUrl} /></video>
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40"><div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-6 h-6 text-neutral-800 ml-0.5" /></div></div>
-          </button>
-        ) : (<div className="px-4 pt-2 flex items-center gap-2"><span className="text-lg">🎥</span><span className="text-sm opacity-80">Vídeo</span></div>)}
+        {mediaUrl ? (<button onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })} className="relative block cursor-pointer group">
+          <video preload="metadata" className="max-w-full max-h-48"><source src={mediaUrl} /></video>
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40"><div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-6 h-6 text-neutral-800 ml-0.5" /></div></div>
+        </button>) : (<div className="px-4 pt-2 flex items-center gap-2"><span>🎥</span><span className="text-sm opacity-80">Vídeo</span></div>)}
         {corpo && corpo !== '🎥 Vídeo' && <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}
       </div>);
 
     case 'documento':
       return (<div className="px-4 pt-2">
-        {mediaUrl ? (
-          <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn('flex items-center gap-3 p-3 rounded-lg transition-colors', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
-            <span className="text-2xl">📄</span>
-            <div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{corpo || 'Documento'}</p><p className="text-2xs opacity-60">Clique para baixar</p></div>
-            <Download className="w-4 h-4 opacity-60" />
-          </a>
-        ) : (<div className="flex items-center gap-2"><span className="text-lg">📄</span><span className="text-sm opacity-80">{corpo || 'Documento'}</span></div>)}
+        {mediaUrl ? (<a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn('flex items-center gap-3 p-3 rounded-lg transition-colors', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
+          <span className="text-2xl">📄</span><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{corpo || 'Documento'}</p><p className="text-2xs opacity-60">Clique para baixar</p></div><Download className="w-4 h-4 opacity-60" />
+        </a>) : (<div className="flex items-center gap-2"><span>📄</span><span className="text-sm opacity-80">{corpo || 'Documento'}</span></div>)}
       </div>);
 
-    case 'localizacao':
-      return (<div className="px-4 pt-2"><div className={cn('flex items-center gap-2 p-2 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}><span className="text-2xl">📍</span><div><p className="text-sm font-medium">Localização</p><p className="text-2xs opacity-70">{corpo}</p></div></div></div>);
+    case 'localizacao': {
+      // Extrair coordenadas do corpo: "📍 -12.9628267, -38.4691909"
+      const match = corpo?.match(/([-\d.]+),\s*([-\d.]+)/);
+      const lat = match?.[1];
+      const lng = match?.[2];
+      const mapsUrl = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+
+      return (<div className="px-4 pt-2">
+        {mapsUrl ? (
+          <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+            className={cn('flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
+            <MapPin className="w-6 h-6 text-red-500 shrink-0" />
+            <div>
+              <p className="text-sm font-medium">Localização</p>
+              <p className="text-2xs opacity-70">{lat}, {lng}</p>
+              <p className={cn('text-2xs mt-0.5 underline', enviada ? 'text-white/80' : 'text-primary')}>Abrir no Google Maps</p>
+            </div>
+          </a>
+        ) : (
+          <div className={cn('flex items-center gap-2 p-2 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+            <span className="text-2xl">📍</span><div><p className="text-sm font-medium">Localização</p><p className="text-2xs opacity-70">{corpo}</p></div>
+          </div>
+        )}
+      </div>);
+    }
 
     case 'contato':
       return (<div className="px-4 pt-2"><div className={cn('flex items-center gap-2 p-2 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}><span className="text-2xl">👤</span><p className="text-sm">{corpo || 'Contato'}</p></div></div>);
