@@ -250,7 +250,10 @@ function Lightbox({ url, tipo, onFechar }) {
 // ChatBubble — bolha de mensagem com suporte a mídia
 // ============================================================
 function ChatBubble({ mensagem, onLightbox }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url } = mensagem;
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante } = mensagem;
+  
+  // nome_participante vem do banco, nomeParticipante vem do broadcast WS
+  const participante = nome_participante || nomeParticipante;
 
   if (tipo === 'sistema') {
     return (
@@ -289,8 +292,10 @@ function ChatBubble({ mensagem, onLightbox }) {
             : 'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md'
         )}
       >
-        {!enviada && contato_nome && (
-          <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{contato_nome}</span>
+        {!enviada && (participante || contato_nome) && (
+          <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">
+            {participante || contato_nome}
+          </span>
         )}
 
         <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} />
