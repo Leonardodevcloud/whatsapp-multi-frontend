@@ -7,7 +7,7 @@ import { Avatar, Button, Skeleton, EmptyState } from '../ui';
 import {
   Send, StickyNote, Check, CheckCheck, Clock, AlertCircle,
   MessageSquare, X, Download, Play, Zap, Mic, Plus,
-  Image, FileText, Video, MapPin,
+  Image, FileText, Video, MapPin, ArrowRightLeft, CheckCircle2, Info,
 } from 'lucide-react';
 import { cn, formatarDataMensagem } from '../../lib/utils';
 import api from '../../lib/api';
@@ -25,8 +25,9 @@ function fileToBase64(file) {
   });
 }
 
-export default function ChatArea() {
+export default function ChatArea({ onTogglePainel, painelAberto }) {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
+  const selecionarTicket = useTicketStore((s) => s.selecionarTicket);
   const usuario = useAuthStore((s) => s.usuario);
   const queryClient = useQueryClient();
 
@@ -189,13 +190,40 @@ export default function ChatArea() {
 
   if (!ticketAtivo) return (<div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]"><EmptyState icone={MessageSquare} titulo="Selecione um chamado" descricao="Escolha um chamado na lista ao lado" /></div>);
 
+  // Finalizar chamado
+  const finalizarMutation = useMutation({
+    mutationFn: () => api.post(`/api/tickets/${ticketAtivo.id}/resolver`),
+    onSuccess: (data) => { selecionarTicket(data); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado finalizado!'); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Transferir chamado (modal simples)
+  const [menuTransferir, setMenuTransferir] = useState(false);
+  const { data: todosUsuarios } = useQuery({ queryKey: ['usuarios'], queryFn: () => api.get('/api/users'), enabled: menuTransferir });
+
+  const transferirMutation = useMutation({
+    mutationFn: ({ usuario_id }) => api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id }),
+    onSuccess: (data) => { selecionarTicket(data); setMenuTransferir(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado transferido!'); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Registrar visualização ao abrir chamado da fila
+  useEffect(() => {
+    if (!ticketAtivo?.id) return;
+    if (ticketAtivo.status === 'pendente') {
+      api.post(`/api/tickets/${ticketAtivo.id}/visualizar`).catch(() => {});
+    }
+  }, [ticketAtivo?.id]);
+
+  const atendentesTransferir = (todosUsuarios?.usuarios || todosUsuarios || []).filter(u => u.id !== usuario?.id && u.ativo !== false);
+
   return (
     <div className="flex-1 flex flex-col bg-[var(--color-bg)] min-w-0">
       {/* Header */}
       <div className="h-14 px-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <Avatar nome={ticketAtivo.contato_nome} size="md" />
-          <div className="min-w-0">
+        <button onClick={onTogglePainel} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
+          <Avatar nome={ticketAtivo.contato_nome} src={ticketAtivo.contato_avatar} size="md" />
+          <div className="min-w-0 text-left">
             <h3 className="text-sm font-semibold truncate">{ticketAtivo.contato_nome || ticketAtivo.contato_telefone}</h3>
             <p className="text-2xs text-[var(--color-text-muted)]">
               {digitando?.acao === 'composing' ? <span className="text-green-500 animate-pulse">digitando...</span>
@@ -203,11 +231,47 @@ export default function ChatArea() {
                 : `#${ticketAtivo.protocolo}`}
             </p>
           </div>
+        </button>
+
+        <div className="flex items-center gap-1">
+          {/* Transferir */}
+          <div className="relative">
+            <button onClick={() => setMenuTransferir(!menuTransferir)} title="Transferir chamado"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)] hover:text-primary transition-colors">
+              <ArrowRightLeft className="w-4 h-4" />
+            </button>
+            {menuTransferir && (
+              <div className="absolute right-0 top-10 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg py-2 min-w-[200px] z-50 max-h-60 overflow-y-auto">
+                <p className="px-3 py-1 text-2xs text-[var(--color-text-muted)] font-medium uppercase">Transferir para</p>
+                {atendentesTransferir.map(u => (
+                  <button key={u.id} onClick={() => transferirMutation.mutate({ usuario_id: u.id })}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2">
+                    <Avatar nome={u.nome} size="sm" />
+                    <span className="truncate">{u.nome}</span>
+                  </button>
+                ))}
+                {atendentesTransferir.length === 0 && <p className="px-3 py-2 text-xs text-[var(--color-text-muted)]">Nenhum atendente</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Finalizar */}
+          <button onClick={() => finalizarMutation.mutate()} title="Finalizar chamado" disabled={finalizarMutation.isPending}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-green-50 hover:text-green-600 transition-colors">
+            <CheckCircle2 className="w-4 h-4" />
+          </button>
+
+          {/* Info panel toggle */}
+          <button onClick={onTogglePainel} title="Informações do chamado"
+            className={cn('w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+              painelAberto ? 'bg-primary/10 text-primary' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]')}>
+            <Info className="w-4 h-4" />
+          </button>
         </div>
-        <span className={cn('px-2 py-0.5 rounded text-xs font-medium',
-          ticketAtivo.status === 'pendente' ? 'bg-amber-100 text-amber-700' : ticketAtivo.status === 'aberto' ? 'bg-blue-100 text-blue-700' : 'bg-neutral-100 text-neutral-600'
-        )}>{ticketAtivo.status}</span>
       </div>
+
+      {/* Fechar menu transferir */}
+      {menuTransferir && <div className="fixed inset-0 z-40" onClick={() => setMenuTransferir(false)} />}
 
       {/* Mensagens */}
       <div ref={chatRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
