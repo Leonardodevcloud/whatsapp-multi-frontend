@@ -30,7 +30,7 @@ async function request(endpoint, options = {}) {
   let response = await fetch(`${BASE_URL}${endpoint}`, config);
 
   // Token expirado — tentar refresh
-  if (response.status === 401 && !endpoint.includes('/auth/refresh')) {
+  if (response.status === 401 && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/me') && !endpoint.includes('/auth/login')) {
     const refreshResponse = await fetch(`${BASE_URL}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
@@ -40,8 +40,7 @@ async function request(endpoint, options = {}) {
       // Retry original request
       response = await fetch(`${BASE_URL}${endpoint}`, config);
     } else {
-      // Refresh falhou — redirecionar para login
-      window.location.href = '/login';
+      // Refresh falhou — NÃO redirecionar (deixar o React Router tratar via RotaProtegida)
       throw new ApiError('Sessão expirada', 401);
     }
   }
