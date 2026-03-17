@@ -424,17 +424,17 @@ function ChatBubble({ mensagem, onLightbox }) {
     <div className={cn('flex py-0.5', enviada?'justify-end':'justify-start')}>
       <div className={cn('max-w-[75%] rounded-2xl overflow-hidden', enviada?'bg-primary text-white rounded-br-md':'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
         {!enviada && (participante||contato_nome) && <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante||contato_nome}</span>}
-        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} />
+        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} mensagemId={mensagem.id} />
         <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada?'text-white/60':'text-[var(--color-text-muted)]')}><span className="text-2xs">{formatarDataMensagem(criado_em)}</span>{enviada && <StatusIcon status={status_envio}/>}</div>
       </div>
     </div>
   );
 }
 
-function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox }) {
+function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId }) {
   switch(tipo) {
     case 'imagem': return (<div>{mediaUrl ? <button onClick={()=>onLightbox({url:mediaUrl,tipo:'imagem'})} className="block cursor-pointer"><img src={mediaUrl} alt="Imagem" className="max-w-full max-h-64 object-cover hover:opacity-90" loading="lazy" onError={e=>{e.target.style.display='none'}}/></button> : <div className="px-4 pt-2 flex items-center gap-2"><span>📷</span><span className="text-sm opacity-80">Imagem</span></div>}{corpo&&corpo!=='📷 Imagem'&&<p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}</div>);
-    case 'audio': return (<div className="px-4 pt-2">{mediaUrl ? <audio controls className="max-w-full" style={{minWidth:'220px'}}><source src={mediaUrl} type="audio/ogg"/><source src={mediaUrl} type="audio/mpeg"/></audio> : <div className="flex items-center gap-2"><span>🎵</span><span className="text-sm opacity-80">Áudio</span></div>}</div>);
+    case 'audio': return <AudioBubble corpo={corpo} mediaUrl={mediaUrl} mensagemId={mensagemId} enviada={enviada} />;
     case 'video': return (<div>{mediaUrl ? <button onClick={()=>onLightbox({url:mediaUrl,tipo:'video'})} className="relative block cursor-pointer group"><video preload="metadata" className="max-w-full max-h-48"><source src={mediaUrl}/></video><div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40"><div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-6 h-6 text-neutral-800 ml-0.5"/></div></div></button> : <div className="px-4 pt-2 flex items-center gap-2"><span>🎥</span><span className="text-sm opacity-80">Vídeo</span></div>}{corpo&&corpo!=='🎥 Vídeo'&&<p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}</div>);
     case 'documento': return (<div className="px-4 pt-2">{mediaUrl ? <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn('flex items-center gap-3 p-3 rounded-lg', enviada?'bg-white/10 hover:bg-white/20':'bg-black/5 hover:bg-black/10 dark:bg-white/5')}><span className="text-2xl">📄</span><div className="min-w-0 flex-1"><p className="text-sm font-medium truncate">{corpo||'Documento'}</p><p className="text-2xs opacity-60">Clique para baixar</p></div><Download className="w-4 h-4 opacity-60"/></a> : <div className="flex items-center gap-2"><span>📄</span><span className="text-sm opacity-80">{corpo||'Documento'}</span></div>}</div>);
     case 'localizacao': {
@@ -458,4 +458,75 @@ function StatusIcon({ status }) {
     case 'erro': return <AlertCircle className="w-3 h-3 text-red-300"/>;
     default: return <Check className="w-3 h-3"/>;
   }
+}
+
+// AudioBubble — player de áudio com botão de transcrição
+function AudioBubble({ corpo, mediaUrl, mensagemId, enviada }) {
+  const [transcricao, setTranscricao] = useState(null);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+
+  // Se o corpo já tem transcrição (não é emoji de áudio)
+  const jaTemTranscricao = corpo && corpo.length > 5 && !corpo.startsWith('🎵');
+
+  const handleTranscrever = async () => {
+    if (transcrevendo) return;
+    setTranscrevendo(true);
+    try {
+      const result = await api.post(`/api/ai/transcrever-audio/${mensagemId}`);
+      setTranscricao(result.transcricao);
+      toast.success('Áudio transcrito!');
+    } catch (err) {
+      toast.error('Erro ao transcrever áudio');
+    } finally {
+      setTranscrevendo(false);
+    }
+  };
+
+  const textoTranscrito = transcricao || (jaTemTranscricao ? corpo : null);
+
+  return (
+    <div className="px-4 pt-2">
+      {mediaUrl ? (
+        <audio controls className="max-w-full" style={{ minWidth: '220px' }}>
+          <source src={mediaUrl} type="audio/ogg" />
+          <source src={mediaUrl} type="audio/mpeg" />
+        </audio>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span>🎵</span>
+          <span className="text-sm opacity-80">Áudio</span>
+        </div>
+      )}
+
+      {/* Transcrição */}
+      {textoTranscrito ? (
+        <div className={cn('mt-1.5 p-2 rounded-lg text-xs italic', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+          <span className="opacity-60 text-2xs not-italic">📝 Transcrição:</span>
+          <p className="mt-0.5">{textoTranscrito}</p>
+        </div>
+      ) : (
+        <button
+          onClick={handleTranscrever}
+          disabled={transcrevendo}
+          className={cn(
+            'mt-1.5 flex items-center gap-1.5 text-2xs transition-colors',
+            transcrevendo ? 'opacity-50' : 'opacity-70 hover:opacity-100',
+            enviada ? 'text-white/70 hover:text-white' : 'text-[var(--color-text-muted)] hover:text-primary'
+          )}
+        >
+          {transcrevendo ? (
+            <>
+              <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Transcrevendo...
+            </>
+          ) : (
+            <>
+              <FileText className="w-3 h-3" />
+              Transcrever áudio
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
 }
