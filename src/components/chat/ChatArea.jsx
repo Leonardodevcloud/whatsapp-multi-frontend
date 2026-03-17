@@ -1,12 +1,12 @@
 // src/components/chat/ChatArea.jsx
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
-import { Avatar, Button, Skeleton, EmptyState, Badge } from '../ui';
+import { Avatar, Button, Skeleton, EmptyState } from '../ui';
 import {
-  Send, Paperclip, Smile, StickyNote, Check, CheckCheck,
-  Clock, AlertCircle, MessageSquare, ArrowDown, CornerDownRight,
+  Send, StickyNote, Check, CheckCheck, Clock, AlertCircle,
+  MessageSquare, X, Download, Play,
 } from 'lucide-react';
 import { cn, formatarDataMensagem } from '../../lib/utils';
 import api from '../../lib/api';
@@ -21,39 +21,50 @@ export default function ChatArea() {
 
   const [texto, setTexto] = useState('');
   const [modoNota, setModoNota] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // { url, tipo }
   const chatRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Buscar mensagens do ticket ativo
+  // Buscar mensagens do ticket ativo — com polling a cada 3 segundos
   const { data, isLoading } = useQuery({
     queryKey: ['mensagens', ticketAtivo?.id],
     queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=100`),
     enabled: !!ticketAtivo?.id,
-    refetchInterval: false,
+    refetchInterval: 3000, // Polling a cada 3s — garante tempo real
   });
 
   const mensagens = data?.mensagens || [];
 
-  // Scroll automático para o final
+  // Scroll automático para o final quando chega mensagem nova
+  const prevCountRef = useRef(0);
   useEffect(() => {
-    if (chatRef.current) {
+    if (mensagens.length > prevCountRef.current && chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
+    prevCountRef.current = mensagens.length;
   }, [mensagens.length]);
 
-  // WebSocket — nova mensagem no ticket ativo
+  // WebSocket — nova mensagem (complementa o polling)
   useEffect(() => {
     if (!ticketAtivo?.id) return;
 
     const cleanup = wsClient.on('mensagem:nova', (dados) => {
-      if (dados.ticket_id === ticketAtivo.id) {
+      if (dados.ticket_id === ticketAtivo.id || dados.ticket_id === ticketAtivo?.id) {
         queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
       }
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets-contadores'] });
     });
 
     return cleanup;
   }, [ticketAtivo?.id]);
+
+  // Polling de tickets também
+  useQuery({
+    queryKey: ['tickets'],
+    queryFn: () => api.get('/api/tickets?limite=50'),
+    refetchInterval: 5000,
+  });
 
   // Enviar mensagem
   const enviarMutation = useMutation({
@@ -83,7 +94,6 @@ export default function ChatArea() {
     }
   };
 
-  // Se não tem ticket selecionado
   if (!ticketAtivo) {
     return (
       <div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]">
@@ -107,15 +117,13 @@ export default function ChatArea() {
             <p className="text-2xs text-[var(--color-text-muted)]">#{ticketAtivo.protocolo}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={cn('px-2 py-0.5 rounded text-xs font-medium', 
-            ticketAtivo.status === 'pendente' ? 'bg-amber-100 text-amber-700' :
-            ticketAtivo.status === 'aberto' ? 'bg-blue-100 text-blue-700' :
-            'bg-neutral-100 text-neutral-600'
-          )}>
-            {ticketAtivo.status}
-          </span>
-        </div>
+        <span className={cn('px-2 py-0.5 rounded text-xs font-medium',
+          ticketAtivo.status === 'pendente' ? 'bg-amber-100 text-amber-700' :
+          ticketAtivo.status === 'aberto' ? 'bg-blue-100 text-blue-700' :
+          'bg-neutral-100 text-neutral-600'
+        )}>
+          {ticketAtivo.status}
+        </span>
       </div>
 
       {/* Mensagens */}
@@ -129,12 +137,14 @@ export default function ChatArea() {
             ))}
           </div>
         ) : (
-          mensagens.map((msg) => <ChatBubble key={msg.id} mensagem={msg} />)
+          mensagens.map((msg) => (
+            <ChatBubble key={msg.id} mensagem={msg} onLightbox={setLightbox} />
+          ))
         )}
       </div>
 
       {/* Painel IA */}
-      <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(texto) => setTexto(texto)} />
+      <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
       {/* Input de mensagem */}
       <div className={cn(
@@ -148,18 +158,16 @@ export default function ChatArea() {
           </div>
         )}
         <div className="flex items-end gap-2">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setModoNota(!modoNota)}
-              title="Nota interna"
-              className={cn(
-                'w-9 h-9 rounded-lg flex items-center justify-center transition-colors',
-                modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]'
-              )}
-            >
-              <StickyNote className="w-4.5 h-4.5" />
-            </button>
-          </div>
+          <button
+            onClick={() => setModoNota(!modoNota)}
+            title="Nota interna"
+            className={cn(
+              'w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0',
+              modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]'
+            )}
+          >
+            <StickyNote className="w-4 h-4" />
+          </button>
 
           <textarea
             ref={inputRef}
@@ -183,6 +191,57 @@ export default function ChatArea() {
           </Button>
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <Lightbox url={lightbox.url} tipo={lightbox.tipo} onFechar={() => setLightbox(null)} />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Lightbox — exibe imagem/vídeo em tela cheia
+// ============================================================
+function Lightbox({ url, tipo, onFechar }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onFechar(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onFechar]);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center animate-fade-in" onClick={onFechar}>
+      {/* Botões */}
+      <div className="absolute top-4 right-4 flex gap-2 z-10">
+        <a
+          href={url}
+          download
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <Download className="w-5 h-5 text-white" />
+        </a>
+        <button
+          onClick={onFechar}
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <X className="w-5 h-5 text-white" />
+        </button>
+      </div>
+
+      {/* Conteúdo */}
+      <div onClick={(e) => e.stopPropagation()} className="max-w-[90vw] max-h-[90vh]">
+        {tipo === 'video' ? (
+          <video controls autoPlay className="max-w-full max-h-[90vh] rounded-lg">
+            <source src={url} />
+          </video>
+        ) : (
+          <img src={url} alt="Mídia" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
+        )}
+      </div>
     </div>
   );
 }
@@ -190,10 +249,9 @@ export default function ChatArea() {
 // ============================================================
 // ChatBubble — bolha de mensagem com suporte a mídia
 // ============================================================
-function ChatBubble({ mensagem }) {
+function ChatBubble({ mensagem, onLightbox }) {
   const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url } = mensagem;
 
-  // Mensagem de sistema
   if (tipo === 'sistema') {
     return (
       <div className="flex justify-center py-2">
@@ -204,7 +262,6 @@ function ChatBubble({ mensagem }) {
     );
   }
 
-  // Nota interna
   if (is_internal) {
     return (
       <div className="flex justify-end py-0.5">
@@ -236,8 +293,7 @@ function ChatBubble({ mensagem }) {
           <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{contato_nome}</span>
         )}
 
-        {/* Renderização por tipo */}
-        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} />
+        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} />
 
         <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
           <span className="text-2xs">{formatarDataMensagem(criado_em)}</span>
@@ -251,21 +307,21 @@ function ChatBubble({ mensagem }) {
 // ============================================================
 // MediaContent — renderiza conteúdo baseado no tipo
 // ============================================================
-function MediaContent({ tipo, corpo, mediaUrl, enviada }) {
+function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox }) {
   switch (tipo) {
     case 'imagem':
       return (
         <div>
           {mediaUrl ? (
-            <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
+            <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'imagem' })} className="block cursor-pointer">
               <img
                 src={mediaUrl}
                 alt="Imagem"
-                className="max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                className="max-w-full max-h-64 object-cover hover:opacity-90 transition-opacity"
                 loading="lazy"
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
-            </a>
+            </button>
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2">
               <span className="text-lg">📷</span>
@@ -300,10 +356,19 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada }) {
       return (
         <div>
           {mediaUrl ? (
-            <video controls className="max-w-full max-h-64 rounded-lg" preload="metadata">
-              <source src={mediaUrl} />
-              Vídeo não suportado
-            </video>
+            <button
+              onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })}
+              className="relative block cursor-pointer group"
+            >
+              <video preload="metadata" className="max-w-full max-h-48 rounded-t-lg">
+                <source src={mediaUrl} />
+              </video>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+                <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                  <Play className="w-6 h-6 text-neutral-800 ml-0.5" />
+                </div>
+              </div>
+            </button>
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2">
               <span className="text-lg">🎥</span>
@@ -334,6 +399,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada }) {
                 <p className="text-sm font-medium truncate">{corpo || 'Documento'}</p>
                 <p className="text-2xs opacity-60">Clique para baixar</p>
               </div>
+              <Download className="w-4 h-4 opacity-60" />
             </a>
           ) : (
             <div className="flex items-center gap-2">
@@ -394,17 +460,11 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada }) {
 
 function StatusIcon({ status }) {
   switch (status) {
-    case 'pendente':
-      return <Clock className="w-3 h-3" />;
-    case 'enviada':
-      return <Check className="w-3 h-3" />;
-    case 'entregue':
-      return <CheckCheck className="w-3 h-3" />;
-    case 'lida':
-      return <CheckCheck className="w-3 h-3 text-blue-300" />;
-    case 'erro':
-      return <AlertCircle className="w-3 h-3 text-red-300" />;
-    default:
-      return <Check className="w-3 h-3" />;
+    case 'pendente': return <Clock className="w-3 h-3" />;
+    case 'enviada': return <Check className="w-3 h-3" />;
+    case 'entregue': return <CheckCheck className="w-3 h-3" />;
+    case 'lida': return <CheckCheck className="w-3 h-3 text-blue-300" />;
+    case 'erro': return <AlertCircle className="w-3 h-3 text-red-300" />;
+    default: return <Check className="w-3 h-3" />;
   }
 }
