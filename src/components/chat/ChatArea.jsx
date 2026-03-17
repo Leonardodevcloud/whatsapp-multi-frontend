@@ -472,7 +472,42 @@ function AudioBubble({ corpo, mediaUrl, mensagemId, enviada }) {
     if (transcrevendo) return;
     setTranscrevendo(true);
     try {
-      const result = await api.post(`/api/ai/transcrever-audio/${mensagemId}`);
+      let audioBase64 = null;
+
+      if (mediaUrl) {
+        if (mediaUrl.startsWith('data:')) {
+          // Já é base64
+          audioBase64 = mediaUrl;
+        } else {
+          // Baixar pelo frontend e converter pra base64
+          try {
+            const resp = await fetch(mediaUrl);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              audioBase64 = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+              });
+            }
+          } catch {
+            // Falha no download
+          }
+        }
+      }
+
+      let result;
+      if (audioBase64) {
+        // Mandar base64 pro backend transcrever
+        result = await api.post('/api/ai/transcrever-audio-base64', {
+          mensagem_id: mensagemId,
+          audio_base64: audioBase64,
+        });
+      } else {
+        // Fallback — tentar pelo backend direto
+        result = await api.post(`/api/ai/transcrever-audio/${mensagemId}`);
+      }
+
       setTranscricao(result.transcricao);
       toast.success('Áudio transcrito!');
     } catch (err) {
