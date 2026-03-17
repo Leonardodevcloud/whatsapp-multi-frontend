@@ -188,10 +188,10 @@ export default function ChatArea() {
 }
 
 // ============================================================
-// ChatBubble — bolha de mensagem
+// ChatBubble — bolha de mensagem com suporte a mídia
 // ============================================================
 function ChatBubble({ mensagem }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome } = mensagem;
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url } = mensagem;
 
   // Mensagem de sistema
   if (tipo === 'sistema') {
@@ -226,23 +226,170 @@ function ChatBubble({ mensagem }) {
     <div className={cn('flex py-0.5', enviada ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[75%] rounded-2xl px-4 py-2',
+          'max-w-[75%] rounded-2xl overflow-hidden',
           enviada
             ? 'bg-primary text-white rounded-br-md'
             : 'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md'
         )}
       >
-        {!enviada && usuario_nome && (
-          <span className="text-2xs font-medium text-primary mb-0.5 block">{contato_nome}</span>
+        {!enviada && contato_nome && (
+          <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{contato_nome}</span>
         )}
-        <p className="text-sm whitespace-pre-wrap break-words">{corpo || '📎 Mídia'}</p>
-        <div className={cn('flex items-center justify-end gap-1 mt-1', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
+
+        {/* Renderização por tipo */}
+        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} />
+
+        <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
           <span className="text-2xs">{formatarDataMensagem(criado_em)}</span>
           {enviada && <StatusIcon status={status_envio} />}
         </div>
       </div>
     </div>
   );
+}
+
+// ============================================================
+// MediaContent — renderiza conteúdo baseado no tipo
+// ============================================================
+function MediaContent({ tipo, corpo, mediaUrl, enviada }) {
+  switch (tipo) {
+    case 'imagem':
+      return (
+        <div>
+          {mediaUrl ? (
+            <a href={mediaUrl} target="_blank" rel="noopener noreferrer">
+              <img
+                src={mediaUrl}
+                alt="Imagem"
+                className="max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                loading="lazy"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            </a>
+          ) : (
+            <div className="px-4 pt-2 flex items-center gap-2">
+              <span className="text-lg">📷</span>
+              <span className="text-sm opacity-80">Imagem</span>
+            </div>
+          )}
+          {corpo && corpo !== '📷 Imagem' && (
+            <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>
+          )}
+        </div>
+      );
+
+    case 'audio':
+      return (
+        <div className="px-4 pt-2">
+          {mediaUrl ? (
+            <audio controls className="max-w-full" style={{ minWidth: '220px' }}>
+              <source src={mediaUrl} type="audio/ogg" />
+              <source src={mediaUrl} type="audio/mpeg" />
+              Áudio não suportado
+            </audio>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎵</span>
+              <span className="text-sm opacity-80">Áudio</span>
+            </div>
+          )}
+        </div>
+      );
+
+    case 'video':
+      return (
+        <div>
+          {mediaUrl ? (
+            <video controls className="max-w-full max-h-64 rounded-lg" preload="metadata">
+              <source src={mediaUrl} />
+              Vídeo não suportado
+            </video>
+          ) : (
+            <div className="px-4 pt-2 flex items-center gap-2">
+              <span className="text-lg">🎥</span>
+              <span className="text-sm opacity-80">Vídeo</span>
+            </div>
+          )}
+          {corpo && corpo !== '🎥 Vídeo' && (
+            <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>
+          )}
+        </div>
+      );
+
+    case 'documento':
+      return (
+        <div className="px-4 pt-2">
+          {mediaUrl ? (
+            <a
+              href={mediaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                'flex items-center gap-3 p-3 rounded-lg transition-colors',
+                enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10'
+              )}
+            >
+              <span className="text-2xl">📄</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{corpo || 'Documento'}</p>
+                <p className="text-2xs opacity-60">Clique para baixar</p>
+              </div>
+            </a>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📄</span>
+              <span className="text-sm opacity-80">{corpo || 'Documento'}</span>
+            </div>
+          )}
+        </div>
+      );
+
+    case 'localizacao':
+      return (
+        <div className="px-4 pt-2">
+          <div className={cn(
+            'flex items-center gap-2 p-2 rounded-lg',
+            enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5'
+          )}>
+            <span className="text-2xl">📍</span>
+            <div>
+              <p className="text-sm font-medium">Localização</p>
+              <p className="text-2xs opacity-70">{corpo}</p>
+            </div>
+          </div>
+        </div>
+      );
+
+    case 'contato':
+      return (
+        <div className="px-4 pt-2">
+          <div className={cn(
+            'flex items-center gap-2 p-2 rounded-lg',
+            enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5'
+          )}>
+            <span className="text-2xl">👤</span>
+            <p className="text-sm">{corpo || 'Contato'}</p>
+          </div>
+        </div>
+      );
+
+    case 'sticker':
+      return (
+        <div className="px-4 pt-2">
+          {mediaUrl ? (
+            <img src={mediaUrl} alt="Sticker" className="w-32 h-32 object-contain" loading="lazy" />
+          ) : (
+            <span className="text-4xl">🎭</span>
+          )}
+        </div>
+      );
+
+    case 'texto':
+    default:
+      return (
+        <p className="text-sm whitespace-pre-wrap break-words px-4 pt-2">{corpo || '📎 Mídia'}</p>
+      );
+  }
 }
 
 function StatusIcon({ status }) {
