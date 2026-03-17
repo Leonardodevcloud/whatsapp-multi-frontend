@@ -187,7 +187,7 @@ export default function ChatArea() {
     texto.startsWith('/') && quickRepliesFiltradas.length > 0 ? (setQuickReplyAberto(true), setQuickReplyIdx(0)) : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  if (!ticketAtivo) return (<div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]"><EmptyState icone={MessageSquare} titulo="Selecione um ticket" descricao="Escolha uma conversa ao lado" /></div>);
+  if (!ticketAtivo) return (<div className="flex-1 flex items-center justify-center bg-[var(--color-bg)]"><EmptyState icone={MessageSquare} titulo="Selecione um chamado" descricao="Escolha um chamado na lista ao lado" /></div>);
 
   return (
     <div className="flex-1 flex flex-col bg-[var(--color-bg)] min-w-0">

@@ -43,19 +43,19 @@ export default function TicketPanel() {
 
   const aceitarMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo.id}/aceitar`),
-    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Ticket aceito!'); },
+    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Chamado aceito!'); },
     onError: (err) => toast.error(err.message),
   });
 
   const resolverMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo.id}/resolver`),
-    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Ticket resolvido!'); },
+    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Chamado resolvido!'); },
     onError: (err) => toast.error(err.message),
   });
 
   const fecharMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo.id}/fechar`),
-    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Ticket fechado'); },
+    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Chamado fechado'); },
     onError: (err) => toast.error(err.message),
   });
 
@@ -67,7 +67,7 @@ export default function TicketPanel() {
 
   const transferirMutation = useMutation({
     mutationFn: ({ fila_id, usuario_id }) => api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { fila_id, usuario_id }),
-    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Ticket transferido!'); },
+    onSuccess: (data) => { selecionarTicket(data); invalidarTudo(); toast.success('Chamado transferido!'); },
     onError: (err) => toast.error(err.message),
   });
 
@@ -96,7 +96,7 @@ export default function TicketPanel() {
       <div className="p-3 border-b border-[var(--color-border)] space-y-2">
         {isPendente && (
           <Button className="w-full" onClick={() => aceitarMutation.mutate()} loading={aceitarMutation.isPending}>
-            <UserPlus className="w-4 h-4" /> Aceitar ticket
+            <UserPlus className="w-4 h-4" /> Aceitar chamado
           </Button>
         )}
         {isAberto && (

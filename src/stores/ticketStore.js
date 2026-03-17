@@ -3,6 +3,7 @@ import { create } from 'zustand';
 
 export const useTicketStore = create((set, get) => ({
   ticketAtivo: null,
+  abaAtiva: 'fila', // 'meusChats' | 'fila' | 'emAtendimento'
   filtros: {
     status: null,
     filaId: null,
@@ -11,6 +12,7 @@ export const useTicketStore = create((set, get) => ({
 
   selecionarTicket: (ticket) => set({ ticketAtivo: ticket }),
   limparTicketAtivo: () => set({ ticketAtivo: null }),
+  setAba: (aba) => set({ abaAtiva: aba }),
 
   setFiltro: (campo, valor) =>
     set((state) => ({
@@ -18,7 +20,5 @@ export const useTicketStore = create((set, get) => ({
     })),
 
   limparFiltros: () =>
-    set({
-      filtros: { status: null, filaId: null, busca: '' },
-    }),
+    set({ filtros: { status: null, filaId: null, busca: '' } }),
 }));
