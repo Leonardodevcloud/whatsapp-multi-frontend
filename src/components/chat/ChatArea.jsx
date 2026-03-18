@@ -42,6 +42,11 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [digitando, setDigitando] = useState(null);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
   const [melhorandoTexto, setMelhorandoTexto] = useState(false);
+  const [modoEncaminhar, setModoEncaminhar] = useState(false);
+  const [msgsSelecionadas, setMsgsSelecionadas] = useState(new Set());
+  const [modalEncaminhar, setModalEncaminhar] = useState(false);
+  const [buscaContato, setBuscaContato] = useState('');
+  const [enviandoEncaminhar, setEnviandoEncaminhar] = useState(false);
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -60,6 +65,46 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     queryKey: ['respostas-rapidas'],
     queryFn: () => api.get('/api/quick-replies'),
   });
+
+  // Busca de contatos pra encaminhar
+  const { data: contatosEncaminhar } = useQuery({
+    queryKey: ['contatos-encaminhar', buscaContato],
+    queryFn: () => api.get(`/api/contacts?busca=${buscaContato}&limite=20`),
+    enabled: modalEncaminhar && buscaContato.length >= 2,
+  });
+
+  const toggleMsgSelecionada = (msgId) => {
+    setMsgsSelecionadas(prev => {
+      const novo = new Set(prev);
+      if (novo.has(msgId)) novo.delete(msgId);
+      else novo.add(msgId);
+      return novo;
+    });
+  };
+
+  const handleEncaminharMultiplas = async (telefoneDestino) => {
+    if (msgsSelecionadas.size === 0 || enviandoEncaminhar) return;
+    setEnviandoEncaminhar(true);
+    try {
+      let sucesso = 0;
+      for (const msgId of msgsSelecionadas) {
+        try {
+          await api.post('/api/whatsapp/encaminhar', { mensagem_id: msgId, telefone_destino: telefoneDestino });
+          sucesso++;
+        } catch { /* ignorar falhas individuais */ }
+        await new Promise(r => setTimeout(r, 300)); // Rate limit
+      }
+      toast.success(`${sucesso} mensagem(ns) encaminhada(s)!`);
+      setModoEncaminhar(false);
+      setMsgsSelecionadas(new Set());
+      setModalEncaminhar(false);
+      setBuscaContato('');
+    } catch {
+      toast.error('Erro ao encaminhar');
+    } finally {
+      setEnviandoEncaminhar(false);
+    }
+  };
 
   const quickRepliesFiltradas = (respostasRapidas || []).filter(r => {
     if (!texto.startsWith('/')) return false;
@@ -278,8 +323,71 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       <div ref={chatRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
         {isLoading ? (
           <div className="space-y-3">{Array.from({length:6}).map((_,i) => (<div key={i} className={cn('flex', i%2===0?'justify-start':'justify-end')}><Skeleton className={cn('h-10 rounded-2xl', i%2===0?'w-64':'w-48')} /></div>))}</div>
-        ) : mensagens.map((msg) => <ChatBubble key={msg.id} mensagem={msg} onLightbox={setLightbox} />)}
+        ) : mensagens.map((msg) => (
+          <div key={msg.id} className={cn('flex items-start gap-2', modoEncaminhar && 'cursor-pointer')} onClick={() => modoEncaminhar && toggleMsgSelecionada(msg.id)}>
+            {modoEncaminhar && (
+              <div className="flex items-center pt-2 shrink-0">
+                <div className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
+                  msgsSelecionadas.has(msg.id) ? 'bg-primary border-primary' : 'border-[var(--color-border)]')}>
+                  {msgsSelecionadas.has(msg.id) && <Check className="w-3 h-3 text-white" />}
+                </div>
+              </div>
+            )}
+            <div className="flex-1"><ChatBubble mensagem={msg} onLightbox={setLightbox} modoEncaminhar={modoEncaminhar} onIniciarEncaminhar={() => { setModoEncaminhar(true); setMsgsSelecionadas(new Set([msg.id])); }} /></div>
+          </div>
+        ))}
       </div>
+
+      {/* Barra de seleção encaminhar */}
+      {modoEncaminhar && (
+        <div className="border-t border-primary/20 bg-primary/5 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setModoEncaminhar(false); setMsgsSelecionadas(new Set()); }} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+              <X className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-medium text-primary">{msgsSelecionadas.size} mensagem(ns) selecionada(s)</span>
+          </div>
+          <Button size="sm" onClick={() => setModalEncaminhar(true)} disabled={msgsSelecionadas.size === 0}>
+            <ArrowRightLeft className="w-4 h-4" /> Encaminhar
+          </Button>
+        </div>
+      )}
+
+      {/* Modal encaminhar — busca de contatos */}
+      {modalEncaminhar && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => { setModalEncaminhar(false); setBuscaContato(''); }}>
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--color-border)]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Encaminhar {msgsSelecionadas.size} mensagem(ns)</h3>
+                <button onClick={() => { setModalEncaminhar(false); setBuscaContato(''); }} className="p-1 rounded hover:bg-[var(--color-surface-elevated)]"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input value={buscaContato} onChange={e => setBuscaContato(e.target.value)} placeholder="Buscar por nome ou telefone..."
+                  className="w-full h-9 pl-9 pr-3 rounded-lg bg-[var(--color-surface-elevated)] text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0" autoFocus />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {buscaContato.length < 2 ? (
+                <p className="text-xs text-[var(--color-text-muted)] text-center py-8">Digite pelo menos 2 caracteres</p>
+              ) : (contatosEncaminhar?.contatos || []).length === 0 ? (
+                <p className="text-xs text-[var(--color-text-muted)] text-center py-8">Nenhum contato encontrado</p>
+              ) : (contatosEncaminhar?.contatos || []).map(c => (
+                <button key={c.id} onClick={() => handleEncaminharMultiplas(c.telefone)} disabled={enviandoEncaminhar}
+                  className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-[var(--color-surface-elevated)] transition-colors disabled:opacity-50">
+                  <Avatar nome={c.nome} src={c.avatar_url} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{c.nome || c.telefone}</p>
+                    <p className="text-2xs text-[var(--color-text-muted)]">{c.telefone}</p>
+                  </div>
+                  <ArrowRightLeft className="w-4 h-4 text-[var(--color-text-muted)]" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
@@ -408,13 +516,11 @@ function Lightbox({ url, tipo, onFechar }) {
   );
 }
 
-function ChatBubble({ mensagem, onLightbox }) {
+function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar }) {
   const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, reacao, deletada } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
   const [reacaoAberta, setReacaoAberta] = useState(false);
-  const [encaminharAberto, setEncaminharAberto] = useState(false);
-  const [telEncaminhar, setTelEncaminhar] = useState('');
 
   if (tipo==='sistema') return (<div className="flex justify-center py-2"><span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] px-3 py-1 rounded-full">{corpo}</span></div>);
   if (is_internal) return (
@@ -442,30 +548,17 @@ function ChatBubble({ mensagem, onLightbox }) {
     } catch { toast.error('Erro ao apagar'); }
   };
 
-  const handleEncaminhar = async () => {
-    if (!telEncaminhar.trim()) return;
-    try {
-      await api.post('/api/whatsapp/encaminhar', { mensagem_id: mensagem.id, telefone_destino: telEncaminhar.trim() });
-      toast.success('Mensagem encaminhada!');
-      setEncaminharAberto(false);
-      setTelEncaminhar('');
-      setMenuAberto(false);
-    } catch { toast.error('Erro ao encaminhar'); }
-  };
-
   const [mostrarApagada, setMostrarApagada] = useState(false);
   const deletadaPorContato = deletada && mensagem.deletada_por === 'contato';
   const deletadaPorAtendente = deletada && mensagem.deletada_por === 'atendente';
 
-  // (... restante do código mantido)
-
   const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
   return (
-    <div className={cn('flex py-0.5 group', enviada?'justify-end':'justify-start')}>
+    <div className={cn('flex py-0.5', !modoEncaminhar && 'group', enviada?'justify-end':'justify-start')}>
       <div className="relative max-w-[75%]">
-        {/* Menu de ações — aparece no hover */}
-        {!deletada && (
+        {/* Menu de ações — aparece no hover (esconde no modo encaminhar) */}
+        {!deletada && !modoEncaminhar && (
         <div className={cn('absolute top-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10',
           enviada ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1')}>
           <button onClick={() => setReacaoAberta(!reacaoAberta)} className="p-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]" title="Reagir">
@@ -491,7 +584,7 @@ function ChatBubble({ mensagem, onLightbox }) {
         {menuAberto && (
           <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-20 py-1 min-w-[160px]',
             enviada ? 'right-0' : 'left-0')}>
-            <button onClick={() => { setEncaminharAberto(true); setMenuAberto(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2">
+            <button onClick={() => { if (onIniciarEncaminhar) onIniciarEncaminhar(); setMenuAberto(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2">
               <ArrowRightLeft className="w-3.5 h-3.5"/> Encaminhar
             </button>
             {enviada && !deletada && (
@@ -499,20 +592,6 @@ function ChatBubble({ mensagem, onLightbox }) {
                 <X className="w-3.5 h-3.5"/> Apagar mensagem
               </button>
             )}
-          </div>
-        )}
-
-        {/* Modal encaminhar */}
-        {encaminharAberto && (
-          <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-20 p-3 min-w-[220px]',
-            enviada ? 'right-0' : 'left-0')}>
-            <p className="text-xs font-medium mb-2">Encaminhar para:</p>
-            <input value={telEncaminhar} onChange={e => setTelEncaminhar(e.target.value)} placeholder="Telefone (ex: 5571999999999)"
-              className="w-full h-8 rounded-md bg-[var(--color-surface-elevated)] px-2 text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary/30 mb-2"/>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setEncaminharAberto(false)} className="text-2xs text-[var(--color-text-muted)]">Cancelar</button>
-              <button onClick={handleEncaminhar} disabled={!telEncaminhar.trim()} className="text-2xs text-primary font-medium disabled:opacity-40">Enviar</button>
-            </div>
           </div>
         )}
 
