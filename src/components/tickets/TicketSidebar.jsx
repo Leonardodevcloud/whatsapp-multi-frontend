@@ -148,7 +148,7 @@ export default function TicketSidebar() {
   ];
 
   return (
-    <div className="w-80 border-r border-[var(--color-border)] flex flex-col bg-[var(--color-surface)] shrink-0">
+    <div className="w-96 border-r border-[var(--color-border)] flex flex-col bg-[var(--color-surface)] shrink-0">
       {/* Header */}
       <div className="p-3 border-b border-[var(--color-border)]">
         <div className="flex items-center justify-between mb-3">
@@ -171,27 +171,27 @@ export default function TicketSidebar() {
           )}
         </div>
 
-        {/* Abas: Meus Chats | Fila | Em Atendimento */}
-        <div className="flex bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated rounded-lg p-0.5">
+        {/* Abas */}
+        <div className="flex bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated rounded-xl p-1 gap-1">
           {ABAS.map(({ id, label, icon: Icon, count }) => (
             <button
               key={id}
               onClick={() => setAba(id)}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all relative',
+                'flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-2xs font-medium transition-all duration-200 relative',
                 abaAtiva === id
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'
+                  ? 'bg-primary/15 text-primary shadow-sm ring-1 ring-primary/20'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)]'
               )}
             >
-              <Icon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{label}</span>
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
               {count > 0 && (
                 <span className={cn(
-                  'min-w-[18px] h-[18px] rounded-full text-2xs font-bold flex items-center justify-center px-1',
+                  'min-w-[18px] h-[18px] rounded-full text-2xs font-bold flex items-center justify-center px-1 transition-all duration-200',
                   abaAtiva === id
-                    ? 'bg-white/25 text-white'
-                    : id === 'fila' ? 'bg-amber-500 text-white animate-pulse' : 'bg-[var(--color-text-muted)]/20 text-[var(--color-text-muted)]'
+                    ? 'bg-primary text-white'
+                    : id === 'fila' ? 'bg-amber-500 text-white' : 'bg-[var(--color-text-muted)]/15 text-[var(--color-text-muted)]'
                 )}>
                   {count}
                 </span>
