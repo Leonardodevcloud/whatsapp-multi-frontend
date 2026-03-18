@@ -523,7 +523,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar 
   const [reacaoAberta, setReacaoAberta] = useState(false);
   const [reacaoLocal, setReacaoLocal] = useState(mensagem.reacao || null);
 
-  if (tipo==='sistema') return (<div className="flex justify-center py-2"><span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] px-3 py-1 rounded-full">{corpo}</span></div>);
+  if (tipo==='sistema') return (<div className="flex justify-center py-3"><div className="bg-[var(--color-surface-elevated)] border border-[var(--color-border)] px-4 py-2 rounded-xl text-center"><span className="text-xs text-[var(--color-text-secondary)] font-medium">{corpo}</span></div></div>);
   if (is_internal) return (
     <div className="flex justify-end py-0.5"><div className="max-w-[75%] rounded-2xl rounded-br-md px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
       <div className="flex items-center gap-1.5 mb-1"><StickyNote className="w-3 h-3 text-amber-600"/><span className="text-2xs font-medium text-amber-600">Nota — {usuario_nome}</span></div>
