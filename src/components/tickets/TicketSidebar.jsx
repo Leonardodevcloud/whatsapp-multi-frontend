@@ -1,12 +1,13 @@
 // src/components/tickets/TicketSidebar.jsx
 import { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
-import { Avatar, Skeleton, EmptyState } from '../ui';
-import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone } from 'lucide-react';
+import { Avatar, Skeleton, EmptyState, Button } from '../ui';
+import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone, Send } from 'lucide-react';
 import { cn, formatarDataTicket, corStatus } from '../../lib/utils';
 import api from '../../lib/api';
+import toast from 'react-hot-toast';
 
 // Som de notificação
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQADAAB/f39/gICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqenpqalpKOioaCfnp2cm5qZmJeWlZSTkpGQj46NjIuKiYiHhoWEg4KBgIB/fn19fHt6eXh3dnV0c3JxcHBvcG9wb3BvcHFycnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TExcXFxcXFxMTDw8LBwL++vby7urm4t7a1tLOysbCvrq2sq6qpqKempaSjoqGgn56dnJuamZiXlpWUk5KRkI+OjYyLiomIh4aFhIKBgH9+fHt6eXd2dXNycXBvbm1sa2pqaWlpaWlqa2tsbW5vcHFyc3R1dnd4eXp7fH1+f4A=';
@@ -14,8 +15,12 @@ const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAA
 export default function TicketSidebar() {
   const { ticketAtivo, selecionarTicket, abaAtiva, setAba, filtros, setFiltro } = useTicketStore();
   const usuario = useAuthStore((s) => s.usuario);
+  const queryClient = useQueryClient();
   const [buscaLocal, setBuscaLocal] = useState('');
   const [somAtivo, setSomAtivo] = useState(() => localStorage.getItem('notifSom') !== 'false');
+  const [novaConversaContato, setNovaConversaContato] = useState(null);
+  const [msgNovaConversa, setMsgNovaConversa] = useState('');
+  const [enviandoNova, setEnviandoNova] = useState(false);
   const prevTicketsRef = useRef([]);
   const audioRef = useRef(null);
 
@@ -112,6 +117,42 @@ export default function TicketSidebar() {
   const emAtendimento = emAtendimentoData?.tickets || [];
   const dispositivoExterno = dispositivoExternoData?.tickets || [];
 
+  // Busca de contatos quando tem busca ativa (pra iniciar nova conversa)
+  const { data: contatosBusca } = useQuery({
+    queryKey: ['contatos-sidebar-busca', filtros.busca],
+    queryFn: () => api.get(`/api/contacts?busca=${filtros.busca}&limite=10`),
+    enabled: !!filtros.busca && filtros.busca.length >= 2,
+  });
+
+  // Contatos que NÃO tem chamado aberto (pra mostrar como "iniciar conversa")
+  const todosTicketsTelefones = new Set([...meusChats, ...fila, ...emAtendimento, ...dispositivoExterno].map(t => t.contato_telefone));
+  const contatosSemChamado = (contatosBusca?.contatos || []).filter(c => !todosTicketsTelefones.has(c.telefone));
+
+  const handleIniciarNovaConversa = async () => {
+    if (!novaConversaContato || !msgNovaConversa.trim() || enviandoNova) return;
+    setEnviandoNova(true);
+    try {
+      const result = await api.post('/api/whatsapp/iniciar-conversa', {
+        telefone: novaConversaContato.telefone,
+        mensagem: msgNovaConversa.trim(),
+        contato_id: novaConversaContato.id,
+      });
+      toast.success('Conversa iniciada!');
+      setNovaConversaContato(null);
+      setMsgNovaConversa('');
+      setBuscaLocal('');
+      queryClient.invalidateQueries({ queryKey: ['chamados'] });
+      if (result.ticket) {
+        setAba('meusChats');
+        selecionarTicket(result.ticket);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Erro ao iniciar conversa');
+    } finally {
+      setEnviandoNova(false);
+    }
+  };
+
   // Contagem por aba
   const contMeus = meusChats.length;
   const contFila = fila.length;
@@ -203,7 +244,27 @@ export default function TicketSidebar() {
 
       {/* Lista de chamados */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {ticketsExibidos.length === 0 ? (
+        {/* Modal iniciar nova conversa */}
+        {novaConversaContato && (
+          <div className="px-3 py-2 bg-primary/5 border-b border-primary/20">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-primary">Nova conversa com {novaConversaContato.nome}</p>
+              <button onClick={() => setNovaConversaContato(null)} className="p-0.5 rounded hover:bg-primary/10"><X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" /></button>
+            </div>
+            <div className="flex gap-2">
+              <input value={msgNovaConversa} onChange={e => setMsgNovaConversa(e.target.value)}
+                placeholder="Primeira mensagem..." autoFocus
+                className="flex-1 h-8 rounded-lg bg-[var(--color-surface)] px-3 text-xs border border-[var(--color-border)] focus:outline-none focus:ring-1 focus:ring-primary/30"
+                onKeyDown={e => { if (e.key === 'Enter') handleIniciarNovaConversa(); }} />
+              <button onClick={handleIniciarNovaConversa} disabled={!msgNovaConversa.trim() || enviandoNova}
+                className="h-8 w-8 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-40 shrink-0">
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {ticketsExibidos.length === 0 && contatosSemChamado.length === 0 ? (
           <EmptyState
             icone={abaAtiva === 'fila' ? Inbox : abaAtiva === 'meusChats' ? Headphones : abaAtiva === 'dispositivoExterno' ? Smartphone : Users}
             titulo={abaAtiva === 'fila' ? 'Fila vazia' : abaAtiva === 'meusChats' ? 'Nenhum chat' : abaAtiva === 'dispositivoExterno' ? 'Nenhum externo' : 'Nenhum em atendimento'}
@@ -219,6 +280,24 @@ export default function TicketSidebar() {
                 onClick={() => selecionarTicket(ticket)}
                 mostrarAtendente={abaAtiva === 'emAtendimento'}
               />
+            ))}
+          </div>
+        )}
+
+        {/* Contatos sem chamado — iniciar nova conversa */}
+        {filtros.busca && contatosSemChamado.length > 0 && (
+          <div className="border-t border-[var(--color-border)]">
+            <p className="px-3 py-2 text-2xs text-[var(--color-text-muted)] uppercase tracking-wide font-medium">Contatos — iniciar conversa</p>
+            {contatosSemChamado.map(c => (
+              <button key={c.id} onClick={() => setNovaConversaContato(c)}
+                className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-[var(--color-surface-elevated)] transition-colors">
+                <Avatar nome={c.nome} src={c.avatar_url} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{c.nome}</p>
+                  <p className="text-2xs text-[var(--color-text-muted)]">{c.telefone}</p>
+                </div>
+                <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+              </button>
             ))}
           </div>
         )}
