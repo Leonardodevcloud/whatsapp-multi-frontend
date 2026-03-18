@@ -5,8 +5,9 @@ import { useThemeStore } from '../../stores/themeStore';
 import { Avatar } from '../ui';
 import {
   MessageSquare, Users, Inbox, BarChart3, Settings, LogOut,
-  Sun, Moon, Zap, BookOpen, Tag, Wifi, WifiOff,
+  Sun, Moon, BookOpen, Tag, Wifi, WifiOff,
 } from 'lucide-react';
+import { SynapseIconSolid } from '../ui/SynapseLogo';
 import { cn } from '../../lib/utils';
 import { useEffect, useState } from 'react';
 import api from '../../lib/api';
@@ -55,8 +56,8 @@ export default function AppLayout() {
       {/* Sidebar de navegação */}
       <aside className="w-[68px] bg-[var(--color-surface)] border-r border-[var(--color-border)] flex flex-col items-center py-4 shrink-0">
         {/* Logo */}
-        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center mb-6">
-          <Zap className="w-5 h-5 text-white" />
+        <div className="mb-6">
+          <SynapseIconSolid size={40} />
         </div>
 
         {/* Nav principal */}

@@ -2,12 +2,13 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useAuthStore } from './stores/authStore';
 import { useThemeStore } from './stores/themeStore';
 import { useTicketStore } from './stores/ticketStore';
 import wsClient from './lib/websocket';
+import SplashScreen from './components/ui/SplashScreen';
 
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/LoginPage';
@@ -36,16 +37,7 @@ function RotaProtegida() {
   const { logado, carregando } = useAuthStore();
 
   if (carregando) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[var(--color-bg)]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center animate-pulse">
-            <span className="text-white font-bold text-lg">T</span>
-          </div>
-          <Skeleton className="h-3 w-24" />
-        </div>
-      </div>
-    );
+    return <SplashScreen onFinish={() => {}} />;
   }
 
   if (!logado) return <Navigate to="/login" replace />;
