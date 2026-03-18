@@ -409,8 +409,13 @@ function Lightbox({ url, tipo, onFechar }) {
 }
 
 function ChatBubble({ mensagem, onLightbox }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante } = mensagem;
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, reacao, deletada } = mensagem;
   const participante = nome_participante || nomeParticipante;
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [reacaoAberta, setReacaoAberta] = useState(false);
+  const [encaminharAberto, setEncaminharAberto] = useState(false);
+  const [telEncaminhar, setTelEncaminhar] = useState('');
+
   if (tipo==='sistema') return (<div className="flex justify-center py-2"><span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] px-3 py-1 rounded-full">{corpo}</span></div>);
   if (is_internal) return (
     <div className="flex justify-end py-0.5"><div className="max-w-[75%] rounded-2xl rounded-br-md px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
@@ -420,12 +425,102 @@ function ChatBubble({ mensagem, onLightbox }) {
     </div></div>
   );
   const enviada = is_from_me;
+
+  const handleReagir = async (emoji) => {
+    try {
+      await api.post('/api/whatsapp/reagir', { mensagem_id: mensagem.id, emoji });
+      setReacaoAberta(false);
+    } catch { toast.error('Erro ao reagir'); }
+  };
+
+  const handleDeletar = async () => {
+    if (!confirm('Apagar esta mensagem?')) return;
+    try {
+      await api.delete(`/api/whatsapp/deletar-mensagem/${mensagem.id}`);
+      toast.success('Mensagem apagada');
+      setMenuAberto(false);
+    } catch { toast.error('Erro ao apagar'); }
+  };
+
+  const handleEncaminhar = async () => {
+    if (!telEncaminhar.trim()) return;
+    try {
+      await api.post('/api/whatsapp/encaminhar', { mensagem_id: mensagem.id, telefone_destino: telEncaminhar.trim() });
+      toast.success('Mensagem encaminhada!');
+      setEncaminharAberto(false);
+      setTelEncaminhar('');
+      setMenuAberto(false);
+    } catch { toast.error('Erro ao encaminhar'); }
+  };
+
+  const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
   return (
-    <div className={cn('flex py-0.5', enviada?'justify-end':'justify-start')}>
-      <div className={cn('max-w-[75%] rounded-2xl overflow-hidden', enviada?'bg-primary text-white rounded-br-md':'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
-        {!enviada && (participante||contato_nome) && <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante||contato_nome}</span>}
-        <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} mensagemId={mensagem.id} />
-        <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada?'text-white/60':'text-[var(--color-text-muted)]')}><span className="text-2xs">{formatarDataMensagem(criado_em)}</span>{enviada && <StatusIcon status={status_envio}/>}</div>
+    <div className={cn('flex py-0.5 group', enviada?'justify-end':'justify-start')}>
+      <div className="relative max-w-[75%]">
+        {/* Menu de ações — aparece no hover */}
+        <div className={cn('absolute top-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10',
+          enviada ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1')}>
+          <button onClick={() => setReacaoAberta(!reacaoAberta)} className="p-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]" title="Reagir">
+            <span style={{fontSize:'12px'}}>😊</span>
+          </button>
+          <button onClick={() => setMenuAberto(!menuAberto)} className="p-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]" title="Mais">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+        </div>
+
+        {/* Painel de reações */}
+        {reacaoAberta && (
+          <div className={cn('absolute -top-8 flex gap-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full px-2 py-1 shadow-lg z-20',
+            enviada ? 'right-0' : 'left-0')}>
+            {EMOJIS_RAPIDOS.map(e => (
+              <button key={e} onClick={() => handleReagir(e)} className="hover:scale-125 transition-transform" style={{fontSize:'16px'}}>{e}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Menu dropdown */}
+        {menuAberto && (
+          <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-20 py-1 min-w-[160px]',
+            enviada ? 'right-0' : 'left-0')}>
+            <button onClick={() => { setEncaminharAberto(true); setMenuAberto(false); }} className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2">
+              <ArrowRightLeft className="w-3.5 h-3.5"/> Encaminhar
+            </button>
+            {enviada && !deletada && (
+              <button onClick={handleDeletar} className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 text-red-500">
+                <X className="w-3.5 h-3.5"/> Apagar mensagem
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Modal encaminhar */}
+        {encaminharAberto && (
+          <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg z-20 p-3 min-w-[220px]',
+            enviada ? 'right-0' : 'left-0')}>
+            <p className="text-xs font-medium mb-2">Encaminhar para:</p>
+            <input value={telEncaminhar} onChange={e => setTelEncaminhar(e.target.value)} placeholder="Telefone (ex: 5571999999999)"
+              className="w-full h-8 rounded-md bg-[var(--color-surface-elevated)] px-2 text-xs border-0 focus:outline-none focus:ring-1 focus:ring-primary/30 mb-2"/>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEncaminharAberto(false)} className="text-2xs text-[var(--color-text-muted)]">Cancelar</button>
+              <button onClick={handleEncaminhar} disabled={!telEncaminhar.trim()} className="text-2xs text-primary font-medium disabled:opacity-40">Enviar</button>
+            </div>
+          </div>
+        )}
+
+        {/* Bolha */}
+        <div className={cn('rounded-2xl overflow-hidden', enviada?'bg-primary text-white rounded-br-md':'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
+          {!enviada && (participante||contato_nome) && <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante||contato_nome}</span>}
+          <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} mensagemId={mensagem.id} />
+          <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada?'text-white/60':'text-[var(--color-text-muted)]')}><span className="text-2xs">{formatarDataMensagem(criado_em)}</span>{enviada && <StatusIcon status={status_envio}/>}</div>
+        </div>
+
+        {/* Reação exibida */}
+        {reacao && (
+          <div className={cn('absolute -bottom-3', enviada ? 'right-2' : 'left-2')}>
+            <span className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full px-1.5 py-0.5 shadow-sm" style={{fontSize:'14px'}}>{reacao}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -445,8 +540,21 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId }
     }
     case 'contato': return (<div className="px-4 pt-2"><div className={cn('flex items-center gap-2 p-2 rounded-lg', enviada?'bg-white/10':'bg-black/5 dark:bg-white/5')}><span className="text-2xl">👤</span><p className="text-sm">{corpo||'Contato'}</p></div></div>);
     case 'sticker': return (<div className="px-4 pt-2">{mediaUrl ? <img src={mediaUrl} alt="Sticker" className="w-32 h-32 object-contain" loading="lazy"/> : <span className="text-4xl">🎭</span>}</div>);
-    default: return (<p className="text-sm whitespace-pre-wrap break-words px-4 pt-2">{corpo||'📎 Mídia'}</p>);
+    default: return (<p className="text-sm whitespace-pre-wrap break-words px-4 pt-2"><Linkify texto={corpo||'📎 Mídia'} enviada={enviada}/></p>);
   }
+}
+
+// Componente pra tornar links clicáveis no texto
+function Linkify({ texto, enviada }) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = texto.split(urlRegex);
+  return parts.map((part, i) => {
+    if (urlRegex.test(part)) {
+      urlRegex.lastIndex = 0;
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={cn('underline break-all', enviada ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80')}>{part}</a>;
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 function StatusIcon({ status }) {
