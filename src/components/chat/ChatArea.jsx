@@ -453,12 +453,19 @@ function ChatBubble({ mensagem, onLightbox }) {
     } catch { toast.error('Erro ao encaminhar'); }
   };
 
+  const [mostrarApagada, setMostrarApagada] = useState(false);
+  const deletadaPorContato = deletada && mensagem.deletada_por === 'contato';
+  const deletadaPorAtendente = deletada && mensagem.deletada_por === 'atendente';
+
+  // (... restante do código mantido)
+
   const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
   return (
     <div className={cn('flex py-0.5 group', enviada?'justify-end':'justify-start')}>
       <div className="relative max-w-[75%]">
         {/* Menu de ações — aparece no hover */}
+        {!deletada && (
         <div className={cn('absolute top-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10',
           enviada ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1')}>
           <button onClick={() => setReacaoAberta(!reacaoAberta)} className="p-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]" title="Reagir">
@@ -468,6 +475,7 @@ function ChatBubble({ mensagem, onLightbox }) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
           </button>
         </div>
+        )}
 
         {/* Painel de reações */}
         {reacaoAberta && (
@@ -511,7 +519,33 @@ function ChatBubble({ mensagem, onLightbox }) {
         {/* Bolha */}
         <div className={cn('rounded-2xl overflow-hidden', enviada?'bg-primary text-white rounded-br-md':'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
           {!enviada && (participante||contato_nome) && <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante||contato_nome}</span>}
-          <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} mensagemId={mensagem.id} />
+          
+          {/* Banner mensagem apagada */}
+          {deletadaPorContato && (
+            <div className="px-4 pt-2">
+              <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-2xs italic', enviada ? 'bg-white/10' : 'bg-red-50 dark:bg-red-900/20')}>
+                <span>🚫</span>
+                <span className={enviada ? 'text-white/70' : 'text-red-600 dark:text-red-400'}>O contato apagou esta mensagem</span>
+                <button onClick={() => setMostrarApagada(!mostrarApagada)} className={cn('ml-auto text-2xs underline', enviada ? 'text-white/50 hover:text-white/80' : 'text-red-500 hover:text-red-700')}>
+                  {mostrarApagada ? 'Ocultar' : 'Ver original'}
+                </button>
+              </div>
+            </div>
+          )}
+          {deletadaPorAtendente && (
+            <div className="px-4 pt-2">
+              <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-2xs italic', enviada ? 'bg-white/10' : 'bg-amber-50 dark:bg-amber-900/20')}>
+                <span>🚫</span>
+                <span className={enviada ? 'text-white/70' : 'text-amber-600 dark:text-amber-400'}>Você apagou esta mensagem</span>
+              </div>
+            </div>
+          )}
+
+          {/* Conteúdo — mostrar sempre se não apagada, ou se clicou "Ver original" */}
+          {(!deletada || mostrarApagada) && (
+            <MediaContent tipo={tipo} corpo={corpo} mediaUrl={media_url} enviada={enviada} onLightbox={onLightbox} mensagemId={mensagem.id} />
+          )}
+          
           <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada?'text-white/60':'text-[var(--color-text-muted)]')}><span className="text-2xs">{formatarDataMensagem(criado_em)}</span>{enviada && <StatusIcon status={status_envio}/>}</div>
         </div>
 
