@@ -517,10 +517,11 @@ function Lightbox({ url, tipo, onFechar }) {
 }
 
 function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, reacao, deletada } = mensagem;
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
   const [reacaoAberta, setReacaoAberta] = useState(false);
+  const [reacaoLocal, setReacaoLocal] = useState(mensagem.reacao || null);
 
   if (tipo==='sistema') return (<div className="flex justify-center py-2"><span className="text-2xs text-[var(--color-text-muted)] bg-[var(--color-surface-elevated)] px-3 py-1 rounded-full">{corpo}</span></div>);
   if (is_internal) return (
@@ -533,10 +534,14 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar 
   const enviada = is_from_me;
 
   const handleReagir = async (emoji) => {
+    setReacaoLocal(emoji); // Atualizar imediatamente
+    setReacaoAberta(false);
     try {
       await api.post('/api/whatsapp/reagir', { mensagem_id: mensagem.id, emoji });
-      setReacaoAberta(false);
-    } catch { toast.error('Erro ao reagir'); }
+    } catch {
+      setReacaoLocal(mensagem.reacao); // Reverter se falhou
+      toast.error('Erro ao reagir');
+    }
   };
 
   const handleDeletar = async () => {
@@ -629,9 +634,9 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar 
         </div>
 
         {/* Reação exibida */}
-        {reacao && (
+        {reacaoLocal && (
           <div className={cn('absolute -bottom-3', enviada ? 'right-2' : 'left-2')}>
-            <span className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full px-1.5 py-0.5 shadow-sm" style={{fontSize:'14px'}}>{reacao}</span>
+            <span className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full px-1.5 py-0.5 shadow-sm" style={{fontSize:'14px'}}>{reacaoLocal}</span>
           </div>
         )}
       </div>
