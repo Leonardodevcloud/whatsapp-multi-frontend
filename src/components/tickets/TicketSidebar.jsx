@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
 import { Avatar, Skeleton, EmptyState } from '../ui';
-import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox } from 'lucide-react';
+import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone } from 'lucide-react';
 import { cn, formatarDataTicket, corStatus } from '../../lib/utils';
 import api from '../../lib/api';
 
@@ -84,17 +84,42 @@ export default function TicketSidebar() {
     refetchInterval: 5000,
   });
 
+  // Dispositivo Externo — chamados pendentes iniciados pelo celular
+  const { data: filasData } = useQuery({
+    queryKey: ['filas-lista'],
+    queryFn: () => api.get('/api/queues'),
+    staleTime: 60000,
+  });
+  
+  const filaDispositivoId = (filasData?.filas || filasData || []).find(f => f.nome === 'Dispositivo Externo')?.id;
+
+  const { data: dispositivoExternoData } = useQuery({
+    queryKey: ['chamados-dispositivo-externo', filtros.busca, filaDispositivoId],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('status', 'pendente');
+      params.set('fila_id', filaDispositivoId);
+      if (filtros.busca) params.set('busca', filtros.busca);
+      params.set('limite', '50');
+      return api.get(`/api/tickets?${params.toString()}`);
+    },
+    enabled: !!filaDispositivoId,
+    refetchInterval: 5000,
+  });
+
   const meusChats = [...(meusChatsData?.tickets || []), ...(meusAguardandoData?.tickets || [])];
-  const fila = filaData?.tickets || [];
+  const fila = (filaData?.tickets || []).filter(t => !t.fila_nome || t.fila_nome !== 'Dispositivo Externo');
   const emAtendimento = emAtendimentoData?.tickets || [];
+  const dispositivoExterno = dispositivoExternoData?.tickets || [];
 
   // Contagem por aba
   const contMeus = meusChats.length;
   const contFila = fila.length;
   const contAtendimento = emAtendimento.length;
+  const contDispositivo = dispositivoExterno.length;
 
   // Tickets da aba ativa
-  const ticketsExibidos = abaAtiva === 'meusChats' ? meusChats : abaAtiva === 'fila' ? fila : emAtendimento;
+  const ticketsExibidos = abaAtiva === 'meusChats' ? meusChats : abaAtiva === 'fila' ? fila : abaAtiva === 'dispositivoExterno' ? dispositivoExterno : emAtendimento;
 
   // Notificação sonora quando chega chamado novo na fila
   useEffect(() => {
@@ -118,6 +143,7 @@ export default function TicketSidebar() {
   const ABAS = [
     { id: 'meusChats', label: 'Meus Chats', icon: Headphones, count: contMeus },
     { id: 'fila', label: 'Fila', icon: Inbox, count: contFila },
+    { id: 'dispositivoExterno', label: 'Externo', icon: Smartphone, count: contDispositivo },
     { id: 'emAtendimento', label: 'Em Atendimento', icon: Users, count: contAtendimento },
   ];
 
@@ -179,9 +205,9 @@ export default function TicketSidebar() {
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         {ticketsExibidos.length === 0 ? (
           <EmptyState
-            icone={abaAtiva === 'fila' ? Inbox : abaAtiva === 'meusChats' ? Headphones : Users}
-            titulo={abaAtiva === 'fila' ? 'Fila vazia' : abaAtiva === 'meusChats' ? 'Nenhum chat' : 'Nenhum em atendimento'}
-            descricao={abaAtiva === 'fila' ? 'Novos chamados aparecerão aqui' : abaAtiva === 'meusChats' ? 'Aceite um chamado da fila' : 'Nenhum chamado sendo atendido'}
+            icone={abaAtiva === 'fila' ? Inbox : abaAtiva === 'meusChats' ? Headphones : abaAtiva === 'dispositivoExterno' ? Smartphone : Users}
+            titulo={abaAtiva === 'fila' ? 'Fila vazia' : abaAtiva === 'meusChats' ? 'Nenhum chat' : abaAtiva === 'dispositivoExterno' ? 'Nenhum externo' : 'Nenhum em atendimento'}
+            descricao={abaAtiva === 'fila' ? 'Novos chamados aparecerão aqui' : abaAtiva === 'meusChats' ? 'Aceite um chamado da fila' : abaAtiva === 'dispositivoExterno' ? 'Conversas do celular aparecerão aqui' : 'Nenhum chamado sendo atendido'}
           />
         ) : (
           <div className="py-1">
