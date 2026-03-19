@@ -28,6 +28,7 @@ function fileToBase64(file) {
 export default function ChatArea({ onTogglePainel, painelAberto }) {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
   const selecionarTicket = useTicketStore((s) => s.selecionarTicket);
+  const limparTicketAtivo = useTicketStore((s) => s.limparTicketAtivo);
   const usuario = useAuthStore((s) => s.usuario);
   const queryClient = useQueryClient();
 
@@ -49,6 +50,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [enviandoEncaminhar, setEnviandoEncaminhar] = useState(false);
   const [modalSticker, setModalSticker] = useState(false);
   const [enviandoSticker, setEnviandoSticker] = useState(false);
+  const [painelRespostas, setPainelRespostas] = useState(false);
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -267,10 +269,18 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     texto.startsWith('/') && quickRepliesFiltradas.length > 0 ? (setQuickReplyAberto(true), setQuickReplyIdx(0)) : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  // Finalizar chamado
+  // Finalizar chamado — limpa a tela ao finalizar
   const finalizarMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`),
-    onSuccess: (data) => { selecionarTicket(data); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo?.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); toast.success('Chamado finalizado!'); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mensagens'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      toast.success('Chamado finalizado!');
+      limparTicketAtivo();
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -425,6 +435,53 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
       {/* Quick replies */}
+      {/* Painel ⚡ Respostas Rápidas — estilo Digisac */}
+      {painelRespostas && (
+        <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)]">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              <span className="text-xs font-semibold text-[var(--color-text)]">Respostas rápidas</span>
+            </div>
+            <button onClick={() => setPainelRespostas(false)} className="p-1 rounded hover:bg-[var(--color-surface-elevated)]">
+              <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+            </button>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {(respostasRapidas || []).length === 0 ? (
+              <p className="text-xs text-[var(--color-text-muted)] text-center py-6">Nenhuma resposta rápida cadastrada</p>
+            ) : (respostasRapidas || []).map((r) => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  setTexto(r.corpo);
+                  setPainelRespostas(false);
+                  inputRef.current?.focus();
+                }}
+                className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-[var(--color-surface-elevated)] border-b border-[var(--color-border)] last:border-b-0 transition-colors"
+              >
+                <div className="shrink-0 mt-0.5">
+                  {r.media_url ? (
+                    <img src={r.media_url} alt="" className="w-10 h-10 rounded-lg object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Zap className="w-4 h-4 text-primary" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-sm font-medium text-[var(--color-text)] truncate">{r.titulo}</span>
+                    <code className="text-2xs font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">{r.atalho}</code>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)] line-clamp-2">{r.corpo}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {quickReplyAberto && quickRepliesFiltradas.length > 0 && (
         <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] max-h-48 overflow-y-auto">
           {quickRepliesFiltradas.map((r,i) => (
@@ -461,6 +518,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         ) : (
           <div className="flex items-end gap-2">
             <button onClick={() => setModoNota(!modoNota)} title="Nota interna" className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]')}><StickyNote className="w-4 h-4" /></button>
+
+            {/* Botão ⚡ Respostas Rápidas */}
+            <button onClick={() => setPainelRespostas(!painelRespostas)} title="Respostas rápidas" className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', painelRespostas ? 'bg-primary/15 text-primary' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]')}><Zap className="w-4 h-4" /></button>
 
             {/* Botão + */}
             <div className="relative shrink-0">
