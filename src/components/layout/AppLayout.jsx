@@ -16,7 +16,7 @@ import api from '../../lib/api';
 import GlobalSearch from './GlobalSearch';
 
 const NAV_ITEMS = [
-  { to: '/tickets', icone: MessageSquare, label: 'Tickets' },
+  { to: '/tickets', icone: MessageSquare, label: 'Chamados' },
   { to: '/contacts', icone: Users, label: 'Contatos' },
   { to: '/quick-replies', icone: BookOpen, label: 'Respostas' },
   { to: '/queues', icone: Inbox, label: 'Filas' },
