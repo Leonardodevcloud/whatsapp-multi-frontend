@@ -1,4 +1,6 @@
 // src/components/tickets/TicketSidebar.jsx
+// CORRIGIDO: badge no final do card + marcar como lida ao selecionar
+
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
@@ -13,7 +15,7 @@ import toast from 'react-hot-toast';
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQADAAB/f39/gICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqenpqalpKOioaCfnp2cm5qZmJeWlZSTkpGQj46NjIuKiYiHhoWEg4KBgIB/fn19fHt6eXh3dnV0c3JxcHBvcG9wb3BvcHFycnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TExcXFxcXFxMTDw8LBwL++vby7urm4t7a1tLOysbCvrq2sq6qpqKempaSjoqGgn56dnJuamZiXlpWUk5KRkI+OjYyLiomIh4aFhIKBgH9+fHt6eXd2dXNycXBvbm1sa2pqaWlpaWlqa2tsbW5vcHFyc3R1dnd4eXp7fH1+f4A=';
 
 export default function TicketSidebar() {
-  const { ticketAtivo, selecionarTicket, abaAtiva, setAba, filtros, setFiltro } = useTicketStore();
+  const { ticketAtivo, selecionarTicket: selecionarTicketStore, abaAtiva, setAba, filtros, setFiltro } = useTicketStore();
   const usuario = useAuthStore((s) => s.usuario);
   const queryClient = useQueryClient();
   const [buscaLocal, setBuscaLocal] = useState('');
@@ -24,7 +26,10 @@ export default function TicketSidebar() {
   const prevTicketsRef = useRef([]);
   const audioRef = useRef(null);
 
-  useEffect(() => { audioRef.current = new Audio(NOTIFICATION_SOUND_URL); audioRef.current.volume = 0.5; }, []);
+  useEffect(() => {
+    audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
+    audioRef.current.volume = 0.5;
+  }, []);
 
   // Debounce busca
   useEffect(() => {
@@ -32,8 +37,25 @@ export default function TicketSidebar() {
     return () => clearTimeout(timer);
   }, [buscaLocal]);
 
-  // ===== QUERIES POR ABA =====
+  // ===== WRAPPER: selecionar ticket + marcar como lida =====
+  const handleSelecionarTicket = async (ticket) => {
+    selecionarTicketStore(ticket);
 
+    // Marcar como lida imediatamente
+    if (parseInt(ticket.nao_lidas || 0) > 0) {
+      try {
+        await api.post(`/api/messages/${ticket.id}/lidas`);
+        // Invalidar queries pra atualizar badge imediatamente
+        queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+        queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
+        queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+        queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+        queryClient.invalidateQueries({ queryKey: ['chamados-dispositivo-externo'] });
+      } catch { /* não crítico */ }
+    }
+  };
+
+  // ===== QUERIES POR ABA =====
   // Meus Chats — chamados atribuídos a mim (aberto/aguardando)
   const { data: meusChatsData } = useQuery({
     queryKey: ['chamados-meus', usuario?.id, filtros.busca],
@@ -76,7 +98,7 @@ export default function TicketSidebar() {
     refetchInterval: 3000,
   });
 
-  // Em Atendimento — todos os chamados abertos (de todos os atendentes)
+  // Em Atendimento — todos os chamados abertos
   const { data: emAtendimentoData } = useQuery({
     queryKey: ['chamados-atendimento', filtros.busca],
     queryFn: () => {
@@ -89,13 +111,13 @@ export default function TicketSidebar() {
     refetchInterval: 5000,
   });
 
-  // Dispositivo Externo — chamados pendentes iniciados pelo celular
+  // Dispositivo Externo
   const { data: filasData } = useQuery({
     queryKey: ['filas-lista'],
     queryFn: () => api.get('/api/queues'),
     staleTime: 60000,
   });
-  
+
   const filaDispositivoId = (filasData?.filas || filasData || []).find(f => f.nome === 'Dispositivo Externo')?.id;
 
   const { data: dispositivoExternoData } = useQuery({
@@ -117,14 +139,13 @@ export default function TicketSidebar() {
   const emAtendimento = emAtendimentoData?.tickets || [];
   const dispositivoExterno = dispositivoExternoData?.tickets || [];
 
-  // Busca de contatos quando tem busca ativa (pra iniciar nova conversa)
+  // Busca de contatos pra iniciar nova conversa
   const { data: contatosBusca } = useQuery({
     queryKey: ['contatos-sidebar-busca', filtros.busca],
     queryFn: () => api.get(`/api/contacts?busca=${filtros.busca}&limite=10`),
     enabled: !!filtros.busca && filtros.busca.length >= 2,
   });
 
-  // Contatos que NÃO tem chamado aberto (pra mostrar como "iniciar conversa")
   const todosTicketsTelefones = new Set([...meusChats, ...fila, ...emAtendimento, ...dispositivoExterno].map(t => t.contato_telefone));
   const contatosSemChamado = (contatosBusca?.contatos || []).filter(c => !todosTicketsTelefones.has(c.telefone));
 
@@ -144,7 +165,7 @@ export default function TicketSidebar() {
       queryClient.invalidateQueries({ queryKey: ['chamados'] });
       if (result.ticket) {
         setAba('meusChats');
-        selecionarTicket(result.ticket);
+        selecionarTicketStore(result.ticket);
       }
     } catch (err) {
       toast.error(err.message || 'Erro ao iniciar conversa');
@@ -160,7 +181,10 @@ export default function TicketSidebar() {
   const contDispositivo = dispositivoExterno.length;
 
   // Tickets da aba ativa
-  const ticketsExibidos = abaAtiva === 'meusChats' ? meusChats : abaAtiva === 'fila' ? fila : abaAtiva === 'dispositivoExterno' ? dispositivoExterno : emAtendimento;
+  const ticketsExibidos = abaAtiva === 'meusChats' ? meusChats
+    : abaAtiva === 'fila' ? fila
+    : abaAtiva === 'dispositivoExterno' ? dispositivoExterno
+    : emAtendimento;
 
   // Notificação sonora quando chega chamado novo na fila
   useEffect(() => {
@@ -171,15 +195,24 @@ export default function TicketSidebar() {
       audioRef.current?.play().catch(() => {});
       if (Notification.permission === 'granted') {
         const novoTicket = fila.find(t => !prevIds.includes(t.id));
-        if (novoTicket) new Notification('Novo chamado', { body: `${novoTicket.contato_nome}: ${novoTicket.ultima_mensagem_preview || 'Nova conversa'}`, icon: '/icon-192.png' });
+        if (novoTicket) new Notification('Novo chamado', {
+          body: `${novoTicket.contato_nome}: ${novoTicket.ultima_mensagem_preview || 'Nova conversa'}`,
+          icon: '/icon-192.png',
+        });
       }
     }
     prevTicketsRef.current = fila.map(t => ({ id: t.id }));
   }, [fila, somAtivo]);
 
-  useEffect(() => { if (Notification.permission === 'default') Notification.requestPermission(); }, []);
+  useEffect(() => {
+    if (Notification.permission === 'default') Notification.requestPermission();
+  }, []);
 
-  const toggleSom = () => { const novo = !somAtivo; setSomAtivo(novo); localStorage.setItem('notifSom', String(novo)); };
+  const toggleSom = () => {
+    const novo = !somAtivo;
+    setSomAtivo(novo);
+    localStorage.setItem('notifSom', String(novo));
+  };
 
   const ABAS = [
     { id: 'meusChats', label: 'Meus Chats', icon: Headphones, count: contMeus },
@@ -203,8 +236,11 @@ export default function TicketSidebar() {
         {/* Busca */}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
-          <input type="text" placeholder="Buscar nome ou número..." value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)}
-            className="w-full h-9 pl-9 pr-8 rounded-lg bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0" />
+          <input
+            type="text" placeholder="Buscar nome ou número..."
+            value={buscaLocal} onChange={(e) => setBuscaLocal(e.target.value)}
+            className="w-full h-9 pl-9 pr-8 rounded-lg bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0"
+          />
           {buscaLocal && (
             <button onClick={() => setBuscaLocal('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-[var(--color-border)]">
               <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
@@ -215,9 +251,7 @@ export default function TicketSidebar() {
         {/* Abas */}
         <div className="flex bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated rounded-xl p-1 gap-1">
           {ABAS.map(({ id, label, icon: Icon, count }) => (
-            <button
-              key={id}
-              onClick={() => setAba(id)}
+            <button key={id} onClick={() => setAba(id)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-2xs font-medium transition-all duration-200 relative',
                 abaAtiva === id
@@ -230,9 +264,9 @@ export default function TicketSidebar() {
               {count > 0 && (
                 <span className={cn(
                   'min-w-[18px] h-[18px] rounded-full text-2xs font-bold flex items-center justify-center px-1 transition-all duration-200',
-                  abaAtiva === id
-                    ? 'bg-primary text-white'
-                    : id === 'fila' ? 'bg-amber-500 text-white' : 'bg-[var(--color-text-muted)]/15 text-[var(--color-text-muted)]'
+                  abaAtiva === id ? 'bg-primary text-white'
+                    : id === 'fila' ? 'bg-amber-500 text-white'
+                    : 'bg-[var(--color-text-muted)]/15 text-[var(--color-text-muted)]'
                 )}>
                   {count}
                 </span>
@@ -252,10 +286,12 @@ export default function TicketSidebar() {
               <button onClick={() => setNovaConversaContato(null)} className="p-0.5 rounded hover:bg-primary/10"><X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" /></button>
             </div>
             <div className="flex gap-2">
-              <input value={msgNovaConversa} onChange={e => setMsgNovaConversa(e.target.value)}
+              <input
+                value={msgNovaConversa} onChange={e => setMsgNovaConversa(e.target.value)}
                 placeholder="Primeira mensagem..." autoFocus
                 className="flex-1 h-8 rounded-lg bg-[var(--color-surface)] px-3 text-xs border border-[var(--color-border)] focus:outline-none focus:ring-1 focus:ring-primary/30"
-                onKeyDown={e => { if (e.key === 'Enter') handleIniciarNovaConversa(); }} />
+                onKeyDown={e => { if (e.key === 'Enter') handleIniciarNovaConversa(); }}
+              />
               <button onClick={handleIniciarNovaConversa} disabled={!msgNovaConversa.trim() || enviandoNova}
                 className="h-8 w-8 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-40 shrink-0">
                 <Send className="w-3.5 h-3.5" />
@@ -277,7 +313,7 @@ export default function TicketSidebar() {
                 key={ticket.id}
                 ticket={ticket}
                 ativo={ticketAtivo?.id === ticket.id}
-                onClick={() => selecionarTicket(ticket)}
+                onClick={() => handleSelecionarTicket(ticket)}
                 mostrarAtendente={abaAtiva === 'emAtendimento'}
               />
             ))}
@@ -321,18 +357,15 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
             : 'border-l-transparent hover:bg-[var(--color-surface-elevated)] dark:hover:bg-surface-dark-elevated'
       )}
     >
-      <div className="relative">
-        <Avatar nome={ticket.contato_nome} src={ticket.contato_avatar} size="md" />
-        {naoLidas > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary text-white text-2xs font-bold flex items-center justify-center shadow-sm">
-            {naoLidas > 9 ? '9+' : naoLidas}
-          </span>
-        )}
-      </div>
+      {/* Avatar SEM badge — badge foi movido pro final do card */}
+      <Avatar nome={ticket.contato_nome} src={ticket.contato_avatar} size="md" />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className={cn('text-sm truncate', naoLidas > 0 ? 'font-bold text-[var(--color-text)]' : 'font-medium text-[var(--color-text)]')}>
+          <span className={cn(
+            'text-sm truncate',
+            naoLidas > 0 ? 'font-bold text-[var(--color-text)]' : 'font-medium text-[var(--color-text)]'
+          )}>
             {ticket.contato_nome || ticket.contato_telefone}
           </span>
           <span className="text-2xs text-[var(--color-text-muted)] shrink-0">
@@ -340,9 +373,21 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
           </span>
         </div>
 
-        <p className={cn('text-xs truncate mt-0.5', naoLidas > 0 ? 'text-[var(--color-text-secondary)] font-medium' : 'text-[var(--color-text-muted)]')}>
-          {ticket.ultima_mensagem_preview || 'Sem mensagens'}
-        </p>
+        <div className="flex items-center justify-between gap-2 mt-0.5">
+          <p className={cn(
+            'text-xs truncate flex-1',
+            naoLidas > 0 ? 'text-[var(--color-text-secondary)] font-medium' : 'text-[var(--color-text-muted)]'
+          )}>
+            {ticket.ultima_mensagem_preview || 'Sem mensagens'}
+          </p>
+
+          {/* Badge de não lidas — posicionado no final do card */}
+          {naoLidas > 0 && (
+            <span className="min-w-[20px] h-[20px] rounded-full bg-primary text-white text-2xs font-bold flex items-center justify-center px-1 shrink-0 shadow-sm">
+              {naoLidas > 9 ? '9+' : naoLidas}
+            </span>
+          )}
+        </div>
 
         {mostrarAtendente && ticket.atendente_nome && (
           <p className="text-2xs text-primary mt-1 truncate">
