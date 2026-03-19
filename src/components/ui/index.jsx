@@ -1,7 +1,9 @@
 // src/components/ui/index.jsx
 // Design System — componentes primitivos
+// CORRIGIDO: Avatar com fallback pra imagem quebrada
 import { cn, iniciais } from '../../lib/utils';
 import { X, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 
 // ============================================================
 // Button
@@ -53,16 +55,25 @@ export function Badge({ children, variant = 'default', className }) {
 }
 
 // ============================================================
-// Avatar
+// Avatar — com fallback pra imagem quebrada
 // ============================================================
 export function Avatar({ nome, src, online, size = 'md', className }) {
+  const [imgErro, setImgErro] = useState(false);
   const sizes = { sm: 'w-7 h-7 text-2xs', md: 'w-9 h-9 text-xs', lg: 'w-12 h-12 text-sm', xl: 'w-16 h-16 text-lg' };
   const dotSizes = { sm: 'w-2 h-2', md: 'w-2.5 h-2.5', lg: 'w-3 h-3', xl: 'w-3.5 h-3.5' };
 
+  const mostrarImagem = src && !imgErro;
+
   return (
     <div className={cn('relative shrink-0', className)}>
-      {src ? (
-        <img src={src} alt={nome} className={cn('rounded-full object-cover', sizes[size])} />
+      {mostrarImagem ? (
+        <img
+          src={src}
+          alt={nome || ''}
+          className={cn('rounded-full object-cover', sizes[size])}
+          onError={() => setImgErro(true)}
+          loading="lazy"
+        />
       ) : (
         <div className={cn('rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center', sizes[size])}>
           {iniciais(nome)}
