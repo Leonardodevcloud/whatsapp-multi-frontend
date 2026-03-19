@@ -51,6 +51,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [modalSticker, setModalSticker] = useState(false);
   const [enviandoSticker, setEnviandoSticker] = useState(false);
   const [painelRespostas, setPainelRespostas] = useState(false);
+  const [confirmaPuxar, setConfirmaPuxar] = useState(false);
+  const [textoPendente, setTextoPendente] = useState('');
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -179,7 +181,43 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     onError: (err) => toast.error(err.message),
   });
 
-  const handleEnviar = () => { if (!texto.trim() || !ticketAtivo) return; enviarMutation.mutate(); };
+  const handleEnviar = () => {
+    if (!texto.trim() || !ticketAtivo) return;
+
+    // Verificar se o chamado está sendo atendido por outro atendente
+    const outroAtendente = ticketAtivo.usuario_id && ticketAtivo.usuario_id !== usuario?.id && ticketAtivo.status === 'aberto';
+    if (outroAtendente) {
+      setTextoPendente(texto.trim());
+      setConfirmaPuxar(true);
+      return;
+    }
+
+    enviarMutation.mutate();
+  };
+
+  // Confirmar puxar chamado → transferir pra si + enviar
+  const confirmarPuxarChamado = async () => {
+    try {
+      // Transferir o chamado pra si mesmo
+      await api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id: usuario.id });
+      // Agora enviar a mensagem
+      if (modoNota) {
+        await api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoPendente });
+      } else {
+        await api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: textoPendente });
+      }
+      setTexto('');
+      setTextoPendente('');
+      setConfirmaPuxar(false);
+      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      toast.success('Chamado puxado e mensagem enviada!');
+    } catch (err) {
+      toast.error(err.message || 'Erro ao puxar chamado');
+    }
+  };
 
   // ============ ENVIO DE MÍDIA ============
   const enviarMidia = async (file, tipo) => {
@@ -253,7 +291,47 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
   const formatarTempo = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
 
-  const selecionarQuickReply = (r) => { setTexto(r.corpo); setQuickReplyAberto(false); inputRef.current?.focus(); };
+  // Selecionar resposta rápida — envia mídia se tiver, ou só insere texto
+  const selecionarQuickReply = async (r) => {
+    setQuickReplyAberto(false);
+    setPainelRespostas(false);
+
+    // Se tem mídia, enviar direto (texto + mídia)
+    if (r.media_url && r.media_tipo && ticketAtivo) {
+      try {
+        if (r.media_tipo === 'imagem') {
+          await api.post('/api/whatsapp/enviar-imagem', {
+            ticket_id: ticketAtivo.id, imagem_base64: r.media_url, caption: r.corpo || '',
+          });
+        } else if (r.media_tipo === 'video') {
+          await api.post('/api/whatsapp/enviar-video', {
+            ticket_id: ticketAtivo.id, video_base64: r.media_url, caption: r.corpo || '',
+          });
+        } else if (r.media_tipo === 'audio') {
+          await api.post('/api/whatsapp/enviar-audio', {
+            ticket_id: ticketAtivo.id, audio_base64: r.media_url,
+          });
+          // Enviar texto separado se tiver corpo
+          if (r.corpo) {
+            await api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: r.corpo });
+          }
+        } else if (r.media_tipo === 'link') {
+          // Link: enviar como texto com o link
+          const textoComLink = r.corpo ? `${r.corpo}\n\n${r.media_url}` : r.media_url;
+          await api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: textoComLink });
+        }
+        queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        toast.success('Resposta rápida enviada!');
+      } catch (err) {
+        toast.error('Erro ao enviar resposta rápida');
+      }
+    } else {
+      // Sem mídia — só insere o texto no campo
+      setTexto(r.corpo);
+      inputRef.current?.focus();
+    }
+  };
 
   const handleKeyDown = (e) => {
     if (quickReplyAberto && quickRepliesFiltradas.length > 0) {
@@ -453,11 +531,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             ) : (respostasRapidas || []).map((r) => (
               <button
                 key={r.id}
-                onClick={() => {
-                  setTexto(r.corpo);
-                  setPainelRespostas(false);
-                  inputRef.current?.focus();
-                }}
+                onClick={() => selecionarQuickReply(r)}
                 className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-[var(--color-surface-elevated)] border-b border-[var(--color-border)] last:border-b-0 transition-colors"
               >
                 <div className="shrink-0 mt-0.5">
@@ -631,6 +705,38 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             </div>
             <div className="p-3 border-t border-[var(--color-border)]">
               <p className="text-2xs text-[var(--color-text-muted)] text-center">Clique em um sticker para enviar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmar puxar chamado de outro atendente */}
+      {confirmaPuxar && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setConfirmaPuxar(false)}>
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
+                <ArrowRightLeft className="w-6 h-6 text-amber-600" />
+              </div>
+              <h3 className="text-sm font-semibold mb-2">Chamado em atendimento</h3>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Este chamado está sendo atendido por <strong className="text-[var(--color-text)]">{ticketAtivo?.atendente_nome || 'outro atendente'}</strong>.
+                Tem certeza que deseja puxar para você?
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setConfirmaPuxar(false); setTextoPendente(''); }}
+                className="flex-1 h-9 rounded-lg border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-surface-elevated)] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarPuxarChamado}
+                className="flex-1 h-9 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                Sim, puxar
+              </button>
             </div>
           </div>
         </div>
