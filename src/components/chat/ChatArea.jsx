@@ -47,6 +47,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [modalEncaminhar, setModalEncaminhar] = useState(false);
   const [buscaContato, setBuscaContato] = useState('');
   const [enviandoEncaminhar, setEnviandoEncaminhar] = useState(false);
+  const [modalSticker, setModalSticker] = useState(false);
+  const [enviandoSticker, setEnviandoSticker] = useState(false);
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -71,6 +73,14 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     queryKey: ['contatos-encaminhar', buscaContato],
     queryFn: () => api.get(`/api/contacts?busca=${buscaContato}&limite=20`),
     enabled: modalEncaminhar && buscaContato.length >= 2,
+  });
+
+  // Galeria de stickers recebidos
+  const { data: stickersGaleria } = useQuery({
+    queryKey: ['stickers-galeria'],
+    queryFn: () => api.get('/api/whatsapp/stickers-galeria?limite=30'),
+    enabled: modalSticker,
+    staleTime: 30000,
   });
 
   const toggleMsgSelecionada = (msgId) => {
@@ -106,6 +116,23 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     }
   };
 
+  // ============ ENVIAR STICKER DA GALERIA ============
+  const handleEnviarSticker = async (stickerUrl) => {
+    if (!ticketAtivo || enviandoSticker) return;
+    setEnviandoSticker(true);
+    try {
+      await api.post('/api/whatsapp/enviar-sticker', { ticketId: ticketAtivo.id, stickerUrl });
+      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      toast.success('Sticker enviado!');
+      setModalSticker(false);
+    } catch {
+      toast.error('Erro ao enviar sticker');
+    } finally {
+      setEnviandoSticker(false);
+    }
+  };
+
   const quickRepliesFiltradas = (respostasRapidas || []).filter(r => {
     if (!texto.startsWith('/')) return false;
     const busca = texto.slice(1).toLowerCase();
@@ -131,7 +158,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       setDigitando(dados);
       setTimeout(() => setDigitando(null), 5000);
     });
-    return () => { c1(); c2(); };
+    // Listener pra mensagem apagada — atualiza chat em tempo real
+    const c3 = wsClient.on('mensagem:deletada', (dados) => {
+      if (dados.ticketId === ticketAtivo.id || dados.ticket_id === ticketAtivo.id) {
+        queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      }
+    });
+    return () => { c1(); c2(); c3(); };
   }, [ticketAtivo?.id]);
 
   // Enviar texto
@@ -449,6 +482,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                       }} />
                     </label>
                   ))}
+                  {/* Botão Sticker */}
+                  <button
+                    onClick={() => { setMenuAnexo(false); setModalSticker(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--color-surface-elevated)] text-left"
+                  >
+                    <span className="w-4 h-4 flex items-center justify-center text-primary">🎭</span> Sticker
+                  </button>
                 </div>
               )}
             </div>
@@ -497,6 +537,44 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
       {menuAnexo && <div className="fixed inset-0 z-40" onClick={() => setMenuAnexo(false)} />}
       {lightbox && <Lightbox url={lightbox.url} tipo={lightbox.tipo} onFechar={() => setLightbox(null)} />}
+
+      {/* Modal Galeria de Stickers */}
+      {modalSticker && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setModalSticker(false)}>
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">
+              <h3 className="text-sm font-semibold">🎭 Stickers Recebidos</h3>
+              <button onClick={() => setModalSticker(false)} className="p-1 rounded hover:bg-[var(--color-surface-elevated)]"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {(stickersGaleria?.stickers || []).length === 0 ? (
+                <div className="text-center py-10">
+                  <span className="text-4xl block mb-2">🎭</span>
+                  <p className="text-xs text-[var(--color-text-muted)]">Nenhum sticker recebido ainda</p>
+                  <p className="text-2xs text-[var(--color-text-muted)] mt-1">Stickers que contatos enviarem aparecerão aqui</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-4 gap-2">
+                  {(stickersGaleria?.stickers || []).map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleEnviarSticker(s.url)}
+                      disabled={enviandoSticker}
+                      className="aspect-square rounded-lg border border-[var(--color-border)] hover:border-primary hover:bg-primary/5 p-1.5 transition-all disabled:opacity-50 flex items-center justify-center"
+                      title="Clique para enviar"
+                    >
+                      <img src={s.url} alt="Sticker" className="w-full h-full object-contain" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-3 border-t border-[var(--color-border)]">
+              <p className="text-2xs text-[var(--color-text-muted)] text-center">Clique em um sticker para enviar</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
