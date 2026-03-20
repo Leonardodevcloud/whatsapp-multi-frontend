@@ -171,13 +171,37 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     return () => { c1(); c2(); c3(); };
   }, [ticketAtivo?.id]);
 
-  // Enviar texto
+  // Enviar texto — OPTIMISTIC UPDATE: limpa campo e mostra mensagem imediatamente
   const enviarMutation = useMutation({
-    mutationFn: async () => {
-      if (modoNota) return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: texto.trim() });
-      return api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: texto.trim() });
+    mutationFn: async ({ textoEnvio, isNota }) => {
+      if (isNota) return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoEnvio });
+      return api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: textoEnvio });
     },
-    onSuccess: () => { setTexto(''); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); queryClient.invalidateQueries({ queryKey: ['tickets'] }); },
+    onMutate: async ({ textoEnvio, isNota }) => {
+      // Optimistic: adicionar mensagem temporária no cache
+      const queryKey = ['mensagens', ticketAtivo.id];
+      await queryClient.cancelQueries({ queryKey });
+      const mensagemTemp = {
+        id: `temp_${Date.now()}`,
+        ticket_id: ticketAtivo.id,
+        usuario_id: usuario?.id,
+        corpo: textoEnvio,
+        tipo: 'texto',
+        is_from_me: true,
+        is_internal: isNota,
+        status_envio: 'pendente',
+        criado_em: new Date().toISOString(),
+        usuario_nome: usuario?.nome,
+      };
+      queryClient.setQueryData(queryKey, (old) => {
+        if (!old) return old;
+        return { ...old, mensagens: [...(old.mensagens || []), mensagemTemp] };
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -192,7 +216,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       return;
     }
 
-    enviarMutation.mutate();
+    const textoEnvio = texto.trim();
+    setTexto(''); // Limpa IMEDIATAMENTE (sem esperar API)
+    enviarMutation.mutate({ textoEnvio, isNota: modoNota });
   };
 
   // Confirmar puxar chamado → transferir pra si + enviar
