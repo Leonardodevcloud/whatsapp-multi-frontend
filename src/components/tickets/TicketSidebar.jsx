@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
 import { Avatar, Skeleton, EmptyState, Button } from '../ui';
-import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone, Send } from 'lucide-react';
+import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone } from 'lucide-react';
 import { cn, formatarDataTicket, corStatus } from '../../lib/utils';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -23,9 +23,7 @@ export default function TicketSidebar() {
 
   const [buscaLocal, setBuscaLocal] = useState('');
   const [somAtivo, setSomAtivo] = useState(() => localStorage.getItem('notifSom') !== 'false');
-  const [novaConversaContato, setNovaConversaContato] = useState(null);
-  const [msgNovaConversa, setMsgNovaConversa] = useState('');
-  const [enviandoNova, setEnviandoNova] = useState(false);
+  const [criandoChamado, setCriandoChamado] = useState(false);
   const prevTicketsRef = useRef([]);
   const audioRef = useRef(null);
 
@@ -148,28 +146,26 @@ export default function TicketSidebar() {
   );
   const contatosSemChamado = (contatosBusca?.contatos || []).filter((c) => !todosTicketsTelefones.has(c.telefone));
 
-  const handleIniciarNovaConversa = async () => {
-    if (!novaConversaContato || !msgNovaConversa.trim() || enviandoNova) return;
-    setEnviandoNova(true);
+  // NOVO: Criar chamado direto sem mensagem — abre chat imediatamente
+  const handleIniciarChamadoDireto = async (contato) => {
+    if (criandoChamado) return;
+    setCriandoChamado(true);
     try {
-      const result = await api.post('/api/whatsapp/iniciar-conversa', {
-        telefone: novaConversaContato.telefone,
-        mensagem: msgNovaConversa.trim(),
-        contato_id: novaConversaContato.id,
+      const ticket = await api.post('/api/tickets/criar-para-contato', {
+        contato_id: contato.id,
       });
-      toast.success('Conversa iniciada!');
-      setNovaConversaContato(null);
-      setMsgNovaConversa('');
+      setAba('meusChats');
+      selecionarTicket(ticket);
       setBuscaLocal('');
-      queryClient.invalidateQueries({ queryKey: ['chamados'] });
-      if (result.ticket) {
-        setAba('meusChats');
-        selecionarTicket(result.ticket);
-      }
+      setFiltro('busca', '');
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      toast.success('Chamado aberto!');
     } catch (err) {
-      toast.error(err.message || 'Erro ao iniciar conversa');
+      toast.error(err.message || 'Erro ao criar chamado');
     } finally {
-      setEnviandoNova(false);
+      setCriandoChamado(false);
     }
   };
 
@@ -292,41 +288,6 @@ export default function TicketSidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {novaConversaContato && (
-          <div className="px-3 py-2 bg-primary/5 border-b border-primary/20">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-primary">
-                Nova conversa com {novaConversaContato.nome}
-              </p>
-              <button
-                onClick={() => setNovaConversaContato(null)}
-                className="p-0.5 rounded hover:bg-primary/10"
-              >
-                <X className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={msgNovaConversa}
-                onChange={(e) => setMsgNovaConversa(e.target.value)}
-                placeholder="Primeira mensagem..."
-                autoFocus
-                className="flex-1 h-8 rounded-lg bg-[var(--color-surface)] px-3 text-xs border border-[var(--color-border)] focus:outline-none focus:ring-1 focus:ring-primary/30"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleIniciarNovaConversa();
-                }}
-              />
-              <button
-                onClick={handleIniciarNovaConversa}
-                disabled={!msgNovaConversa.trim() || enviandoNova}
-                className="h-8 w-8 rounded-lg bg-primary text-white flex items-center justify-center disabled:opacity-40 shrink-0"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {ticketsExibidos.length === 0 && contatosSemChamado.length === 0 ? (
           <EmptyState
             icone={
@@ -379,15 +340,20 @@ export default function TicketSidebar() {
             {contatosSemChamado.map((c) => (
               <button
                 key={c.id}
-                onClick={() => setNovaConversaContato(c)}
-                className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-[var(--color-surface-elevated)] transition-colors"
+                onClick={() => handleIniciarChamadoDireto(c)}
+                disabled={criandoChamado}
+                className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-[var(--color-surface-elevated)] transition-colors disabled:opacity-50"
               >
                 <Avatar nome={c.nome} src={c.avatar_url} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{c.nome}</p>
                   <p className="text-2xs text-[var(--color-text-muted)]">{c.telefone}</p>
                 </div>
-                <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+                {criandoChamado ? (
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+                ) : (
+                  <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+                )}
               </button>
             ))}
           </div>
