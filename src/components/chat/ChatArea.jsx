@@ -8,7 +8,7 @@ import {
   Send, StickyNote, Check, CheckCheck, Clock, AlertCircle,
   MessageSquare, X, Download, Play, Zap, Mic, Plus,
   Image, FileText, Video, MapPin, ArrowRightLeft, CheckCircle2, Info, Sparkles,
-  Star, Trash2,
+  Star, Trash2, XCircle, UserPlus,
 } from 'lucide-react';
 import { cn, formatarDataMensagem } from '../../lib/utils';
 import api from '../../lib/api';
@@ -98,6 +98,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [confirmaPuxar, setConfirmaPuxar] = useState(false);
   const [textoPendente, setTextoPendente] = useState('');
   const [midiaPreview, setMidiaPreview] = useState(null); // { url, tipo, nome } — preview local (item 4)
+  const [modalFechar, setModalFechar] = useState(false);
+  const [motivoSelecionado, setMotivoSelecionado] = useState(null);
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -141,6 +143,15 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   });
   const stickersFavoritos = stickersFavoritosData?.stickers || [];
   const favoritosUrls = new Set(stickersFavoritos.map((s) => s.url));
+
+  // Motivos de atendimento (pra modal de fechamento)
+  const { data: motivosData } = useQuery({
+    queryKey: ['motivos-ativos'],
+    queryFn: () => api.get('/api/tickets/motivos/ativos'),
+    enabled: modalFechar,
+    staleTime: 60000,
+  });
+  const motivosAtivos = motivosData?.motivos || [];
 
   const toggleMsgSelecionada = (msgId) => {
     setMsgsSelecionadas((prev) => {
@@ -507,17 +518,38 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  // Finalizar chamado
+  // Finalizar chamado — com motivo
   const finalizarMutation = useMutation({
-    mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`),
+    mutationFn: ({ motivoId }) => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`, {
+      motivo_id: motivoId || null,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mensagens'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
-      toast.success('Chamado finalizado!');
+      toast.success('Chamado fechado!');
       limparTicketAtivo();
+      setModalFechar(false);
+      setMotivoSelecionado(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleFecharComMotivo = () => {
+    finalizarMutation.mutate({ motivoId: motivoSelecionado });
+  };
+
+  // Puxar chamado da fila
+  const puxarMutation = useMutation({
+    mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/aceitar`),
+    onSuccess: (data) => {
+      selecionarTicket(data);
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      toast.success('Chamado puxado para você!');
     },
     onError: (err) => toast.error(err.message),
   });
@@ -571,6 +603,15 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         </button>
 
         <div className="flex items-center gap-1">
+          {/* Puxar chamado — aparece quando chamado está na fila (pendente) */}
+          {ticketAtivo.status === 'pendente' && (
+            <button onClick={() => puxarMutation.mutate()} title="Puxar chamado" disabled={puxarMutation.isPending}
+              className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50">
+              <UserPlus className="w-3.5 h-3.5" />
+              {puxarMutation.isPending ? 'Puxando...' : 'Puxar chamado'}
+            </button>
+          )}
+
           {/* Transferir */}
           <div className="relative">
             <button onClick={() => setMenuTransferir(!menuTransferir)} title="Transferir chamado"
@@ -592,10 +633,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             )}
           </div>
 
-          {/* Finalizar */}
-          <button onClick={() => finalizarMutation.mutate()} title="Finalizar chamado" disabled={finalizarMutation.isPending}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-green-50 hover:text-green-600 transition-colors">
-            <CheckCircle2 className="w-4 h-4" />
+          {/* Fechar chamado — vermelho */}
+          <button onClick={() => setModalFechar(true)} title="Fechar chamado"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--color-text-muted)] hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-colors">
+            <XCircle className="w-4 h-4" />
           </button>
 
           {/* Info panel toggle */}
@@ -954,6 +995,73 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                 className="flex-1 h-9 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
               >
                 Sim, puxar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal fechar chamado — selecionar motivo */}
+      {modalFechar && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => { setModalFechar(false); setMotivoSelecionado(null); }}>
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-[var(--color-border)] text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-3">
+                <XCircle className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-sm font-semibold mb-1">Fechar chamado</h3>
+              <p className="text-xs text-[var(--color-text-muted)]">Selecione o motivo do atendimento</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {motivosAtivos.length === 0 ? (
+                <p className="text-xs text-[var(--color-text-muted)] text-center py-4">Nenhum motivo cadastrado. Configure em Configurações.</p>
+              ) : (
+                motivosAtivos.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setMotivoSelecionado(m.id)}
+                    className={cn(
+                      'w-full text-left px-4 py-3 rounded-lg border-2 transition-all text-sm',
+                      motivoSelecionado === m.id
+                        ? 'border-primary bg-primary/5 text-primary font-medium'
+                        : 'border-[var(--color-border)] hover:border-primary/40 hover:bg-[var(--color-surface-elevated)] text-[var(--color-text)]'
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                        motivoSelecionado === m.id ? 'border-primary bg-primary' : 'border-[var(--color-text-muted)]'
+                      )}>
+                        {motivoSelecionado === m.id && <Check className="w-2.5 h-2.5 text-white" />}
+                      </div>
+                      {m.nome}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[var(--color-border)] flex gap-2">
+              <button
+                onClick={() => { setModalFechar(false); setMotivoSelecionado(null); }}
+                className="flex-1 h-10 rounded-lg border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-surface-elevated)] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleFecharComMotivo}
+                disabled={finalizarMutation.isPending}
+                className="flex-1 h-10 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {finalizarMutation.isPending ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    Fechar chamado
+                  </>
+                )}
               </button>
             </div>
           </div>
