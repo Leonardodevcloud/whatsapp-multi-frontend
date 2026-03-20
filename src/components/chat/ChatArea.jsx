@@ -518,21 +518,24 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  // Finalizar chamado — com motivo
+  // Finalizar chamado — com motivo — optimistic pra ser instantâneo
   const finalizarMutation = useMutation({
     mutationFn: ({ motivoId }) => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`, {
       motivo_id: motivoId || null,
     }),
-    onSuccess: () => {
+    onMutate: () => {
+      // Fechar modal e limpar tela imediatamente (não esperar API)
+      setModalFechar(false);
+      setMotivoSelecionado(null);
+      limparTicketAtivo();
+      toast.success('Chamado fechado!');
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mensagens'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
-      toast.success('Chamado fechado!');
-      limparTicketAtivo();
-      setModalFechar(false);
-      setMotivoSelecionado(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -541,9 +544,14 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     finalizarMutation.mutate({ motivoId: motivoSelecionado });
   };
 
-  // Puxar chamado da fila
+  // Puxar chamado da fila — optimistic update pra ser instantâneo
   const puxarMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/aceitar`),
+    onMutate: async () => {
+      // Optimistic: atualizar o ticket local imediatamente
+      const ticketOtimista = { ...ticketAtivo, status: 'aberto', usuario_id: usuario?.id, atendente_nome: usuario?.nome };
+      selecionarTicket(ticketOtimista);
+    },
     onSuccess: (data) => {
       selecionarTicket(data);
       queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
@@ -551,7 +559,11 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
       toast.success('Chamado puxado para você!');
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      // Reverter
+      selecionarTicket(ticketAtivo);
+      toast.error(err.message);
+    },
   });
 
   // Transferir chamado
@@ -603,15 +615,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         </button>
 
         <div className="flex items-center gap-1">
-          {/* Puxar chamado — aparece quando chamado está na fila (pendente) */}
-          {ticketAtivo.status === 'pendente' && (
-            <button onClick={() => puxarMutation.mutate()} title="Puxar chamado" disabled={puxarMutation.isPending}
-              className="h-8 px-3 rounded-lg flex items-center gap-1.5 text-xs font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50">
-              <UserPlus className="w-3.5 h-3.5" />
-              {puxarMutation.isPending ? 'Puxando...' : 'Puxar chamado'}
-            </button>
-          )}
-
           {/* Transferir */}
           <div className="relative">
             <button onClick={() => setMenuTransferir(!menuTransferir)} title="Transferir chamado"
@@ -753,8 +756,33 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
       <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
+      {/* ========= BARRA "PUXAR CHAMADO" — aparece no lugar do input quando pendente ========= */}
+      {ticketAtivo.status === 'pendente' && (
+        <div className="border-t-2 border-primary/30 bg-primary/5 px-6 py-4 shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <UserPlus className="w-5 h-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--color-text)]">Chamado na fila</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Puxe este chamado para iniciar o atendimento</p>
+              </div>
+            </div>
+            <button
+              onClick={() => puxarMutation.mutate()}
+              disabled={puxarMutation.isPending}
+              className="h-11 px-6 rounded-xl bg-primary text-white font-semibold text-sm hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2 shrink-0 shadow-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              {puxarMutation.isPending ? 'Puxando...' : 'Puxar chamado'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Painel ⚡ Respostas Rápidas */}
-      {painelRespostas && (
+      {painelRespostas && ticketAtivo.status !== 'pendente' && (
         <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2">
@@ -796,7 +824,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         </div>
       )}
 
-      {quickReplyAberto && quickRepliesFiltradas.length > 0 && (
+      {quickReplyAberto && quickRepliesFiltradas.length > 0 && ticketAtivo.status !== 'pendente' && (
         <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] max-h-48 overflow-y-auto">
           {quickRepliesFiltradas.map((r, i) => (
             <button key={r.id} onClick={() => selecionarQuickReply(r)} className={cn('w-full text-left px-4 py-2.5 flex items-start gap-3', i === quickReplyIdx ? 'bg-primary/10' : 'hover:bg-[var(--color-surface-elevated)]')}>
@@ -811,7 +839,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       )}
 
       {/* Enviando mídia — preview local (item 4) */}
-      {enviandoMidia && (
+      {enviandoMidia && ticketAtivo.status !== 'pendente' && (
         <div className="border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 flex items-center gap-3">
           {midiaPreview?.tipo === 'imagem' && midiaPreview?.url && (
             <img src={midiaPreview.url} alt="Preview" className="w-10 h-10 rounded-lg object-cover shrink-0" />
@@ -828,7 +856,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         </div>
       )}
 
-      {/* Input */}
+      {/* Input — esconde quando chamado está na fila (pendente) */}
+      {ticketAtivo.status !== 'pendente' && (
       <div className={cn('border-t px-4 py-3 bg-[var(--color-surface)] shrink-0', modoNota ? 'border-t-amber-400 bg-amber-50/50 dark:bg-amber-900/10' : 'border-[var(--color-border)]')}>
         {modoNota && (
           <div className="flex items-center gap-1.5 mb-2">
@@ -951,6 +980,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
           </div>
         )}
       </div>
+      )}
 
       {menuAnexo && <div className="fixed inset-0 z-40" onClick={() => setMenuAnexo(false)} />}
       {lightbox && <Lightbox url={lightbox.url} tipo={lightbox.tipo} onFechar={() => setLightbox(null)} />}
