@@ -27,18 +27,23 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
     setLoading(true);
     setSugestao('');
     try {
+      let data;
       if (textoCliente.trim()) {
-        // Gerar resposta pro texto colado
-        const data = await api.post(`/api/ai/sugestao/${ticketId}`, { mensagem_cliente: textoCliente.trim() });
-        setSugestao(data.sugestao || 'Sem sugestão disponível.');
+        data = await api.post(`/api/ai/sugestao/${ticketId}`, { mensagem_cliente: textoCliente.trim() });
       } else {
-        // Gerar a partir das últimas mensagens do ticket
-        const data = await api.get(`/api/ai/sugestao/${ticketId}`);
-        setSugestao(data.sugestao || 'Sem sugestão disponível.');
+        data = await api.get(`/api/ai/sugestao/${ticketId}`);
       }
+
+      if (data.desativada) {
+        setSugestao('IA desativada. Configure a GEMINI_API_KEY nas variáveis de ambiente do backend.');
+        return;
+      }
+
+      setSugestao(data.sugestao || 'Não foi possível gerar sugestão. Tente novamente.');
     } catch (err) {
-      toast.error('Erro ao gerar sugestão');
-      setSugestao('');
+      const msg = err?.message || err?.data?.erro || 'Erro ao gerar sugestão';
+      toast.error(msg);
+      setSugestao(`Erro: ${msg}`);
     } finally {
       setLoading(false);
     }
