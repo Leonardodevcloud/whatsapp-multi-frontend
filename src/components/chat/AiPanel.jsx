@@ -1,7 +1,9 @@
 // src/components/chat/AiPanel.jsx
+// REDESIGN: Campo pra colar mensagem do cliente + gerar resposta sugerida
+
 import { useState } from 'react';
 import { Button, Skeleton } from '../ui';
-import { Sparkles, FileText, Heart, Copy, Check, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Sparkles, FileText, Heart, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import api from '../../lib/api';
 import toast from 'react-hot-toast';
@@ -11,20 +13,29 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
   const [copiado, setCopiado] = useState(false);
   const [abaAi, setAbaAi] = useState('sugestao');
 
-  // Estados manuais (sem useQuery)
+  // Sugestão
+  const [textoCliente, setTextoCliente] = useState('');
   const [sugestao, setSugestao] = useState('');
   const [resumo, setResumo] = useState('');
   const [sentimento, setSentimento] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Gerar sugestão
-  const gerarSugestao = async () => {
+  // Gerar sugestão a partir do texto colado
+  const gerarSugestaoTexto = async () => {
     if (!ticketId || loading) return;
+
     setLoading(true);
     setSugestao('');
     try {
-      const data = await api.get(`/api/ai/sugestao/${ticketId}`);
-      setSugestao(data.sugestao || 'Sem sugestão disponível para esta conversa.');
+      if (textoCliente.trim()) {
+        // Gerar resposta pro texto colado
+        const data = await api.post(`/api/ai/sugestao/${ticketId}`, { mensagem_cliente: textoCliente.trim() });
+        setSugestao(data.sugestao || 'Sem sugestão disponível.');
+      } else {
+        // Gerar a partir das últimas mensagens do ticket
+        const data = await api.get(`/api/ai/sugestao/${ticketId}`);
+        setSugestao(data.sugestao || 'Sem sugestão disponível.');
+      }
     } catch (err) {
       toast.error('Erro ao gerar sugestão');
       setSugestao('');
@@ -117,9 +128,33 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
             ))}
           </div>
 
-          {/* Sugestão */}
+          {/* Sugestão — com campo de texto */}
           {abaAi === 'sugestao' && (
             <div>
+              {/* Campo pra colar mensagem do cliente */}
+              <div className="flex gap-2 mb-2">
+                <textarea
+                  value={textoCliente}
+                  onChange={(e) => setTextoCliente(e.target.value)}
+                  placeholder="Cole a mensagem do cliente aqui (opcional)..."
+                  rows={2}
+                  className="flex-1 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
+                />
+                <Button
+                  size="sm"
+                  className="text-2xs h-auto shrink-0 self-end"
+                  onClick={gerarSugestaoTexto}
+                  loading={loading}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Gerar
+                </Button>
+              </div>
+
+              <p className="text-2xs text-[var(--color-text-muted)] mb-2">
+                Cole o texto do cliente pra gerar uma resposta personalizada, ou clique em Gerar pra usar as últimas mensagens.
+              </p>
+
               {loading ? (
                 <div className="space-y-1.5">
                   <Skeleton className="h-3 w-full" />
@@ -129,24 +164,19 @@ export default function AiPanel({ ticketId, onUsarSugestao }) {
                 <div className="bg-[var(--color-surface)] border border-primary/20 rounded-lg p-3">
                   <p className="text-xs text-[var(--color-text-secondary)] whitespace-pre-wrap leading-relaxed">{sugestao}</p>
                   <div className="flex items-center gap-2 mt-2">
-                    <Button size="sm" className="text-2xs h-7" onClick={handleUsarSugestao}>Usar resposta</Button>
+                    <Button size="sm" className="text-2xs h-7" onClick={handleUsarSugestao}>
+                      <Send className="w-3 h-3" /> Usar resposta
+                    </Button>
                     <button onClick={() => handleCopiar(sugestao)} className="flex items-center gap-1 text-2xs text-[var(--color-text-muted)] hover:text-primary">
                       {copiado ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                       {copiado ? 'Copiado' : 'Copiar'}
                     </button>
-                    <button onClick={gerarSugestao} className="flex items-center gap-1 text-2xs text-[var(--color-text-muted)] hover:text-primary ml-auto">
+                    <button onClick={gerarSugestaoTexto} className="flex items-center gap-1 text-2xs text-[var(--color-text-muted)] hover:text-primary ml-auto">
                       <RefreshCw className="w-3 h-3" /> Nova
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="text-center py-3">
-                  <p className="text-xs text-[var(--color-text-muted)] mb-2">Gere uma sugestão de resposta com IA</p>
-                  <Button size="sm" className="text-2xs h-7" onClick={gerarSugestao}>
-                    <Sparkles className="w-3 h-3" /> Gerar sugestão
-                  </Button>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
 
