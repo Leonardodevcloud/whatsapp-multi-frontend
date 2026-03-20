@@ -1,27 +1,52 @@
 // src/pages/ContactsPage.jsx
 // Redesign: cards grid, abas contatos/grupos, visualizador de histórico, export PDF
 
-import { useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar, Skeleton, EmptyState } from '../components/ui';
 import {
   Users, Search, Phone, MessageSquare, MoreVertical, History,
-  X, Download, ChevronDown, UsersRound, User, Hash, Clock,
+  X, Download, ChevronDown, UsersRound, User, Hash, Clock, Loader2,
 } from 'lucide-react';
 import { cn, formatarDataMensagem, formatarDataRelativa } from '../lib/utils';
 import api from '../lib/api';
 
+const PAGE_SIZE = 60;
+
 export default function ContactsPage() {
   const [busca, setBusca] = useState('');
-  const [aba, setAba] = useState('contato'); // 'contato' | 'grupo'
-  const [historicoAberto, setHistoricoAberto] = useState(null); // contato obj
+  const [aba, setAba] = useState('contato');
+  const [historicoAberto, setHistoricoAberto] = useState(null);
+  const [todosContatos, setTodosContatos] = useState([]);
+  const [totalGeral, setTotalGeral] = useState(0);
+  const [temMais, setTemMais] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  // Primeira página
+  const { isLoading } = useQuery({
     queryKey: ['contatos-page', busca, aba],
-    queryFn: () => api.get(`/api/contacts?busca=${busca}&tipo=${aba}&limite=100`),
+    queryFn: async () => {
+      const res = await api.get(`/api/contacts?busca=${busca}&tipo=${aba}&limite=${PAGE_SIZE}&offset=0`);
+      setTodosContatos(res.contatos || []);
+      setTotalGeral(res.total || 0);
+      setTemMais(res.temMais || false);
+      return res;
+    },
   });
 
-  const contatos = data?.contatos || [];
+  // Carregar mais
+  const carregarMais = useCallback(async () => {
+    if (carregandoMais || !temMais) return;
+    setCarregandoMais(true);
+    try {
+      const res = await api.get(`/api/contacts?busca=${busca}&tipo=${aba}&limite=${PAGE_SIZE}&offset=${todosContatos.length}`);
+      setTodosContatos((prev) => [...prev, ...(res.contatos || [])]);
+      setTemMais(res.temMais || false);
+    } catch { /* ignore */ }
+    finally { setCarregandoMais(false); }
+  }, [busca, aba, todosContatos.length, temMais, carregandoMais]);
+
+  const exibidos = todosContatos.length;
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-bg)]">
@@ -72,8 +97,10 @@ export default function ContactsPage() {
               </button>
             </div>
 
-            {/* Contador */}
-            <span className="text-sm text-[var(--color-text-muted)]">{contatos.length} {aba === 'grupo' ? 'grupos' : 'contatos'}</span>
+            {/* Contador real */}
+            <span className="text-sm text-[var(--color-text-muted)] whitespace-nowrap">
+              {exibidos} de {totalGeral.toLocaleString('pt-BR')} {aba === 'grupo' ? 'grupos' : 'contatos'}
+            </span>
           </div>
         </div>
       </div>
@@ -87,7 +114,7 @@ export default function ContactsPage() {
                 <div key={i} className="h-32 rounded-xl bg-[var(--color-surface)] animate-pulse" />
               ))}
             </div>
-          ) : contatos.length === 0 ? (
+          ) : todosContatos.length === 0 ? (
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 icone={aba === 'grupo' ? UsersRound : Users}
@@ -96,16 +123,35 @@ export default function ContactsPage() {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {contatos.map((c) => (
-                <ContatoCard
-                  key={c.id}
-                  contato={c}
-                  isGrupo={aba === 'grupo'}
-                  onVerHistorico={() => setHistoricoAberto(c)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {todosContatos.map((c) => (
+                  <ContatoCard
+                    key={c.id}
+                    contato={c}
+                    isGrupo={aba === 'grupo'}
+                    onVerHistorico={() => setHistoricoAberto(c)}
+                  />
+                ))}
+              </div>
+
+              {/* Carregar mais */}
+              {temMais && (
+                <div className="flex justify-center mt-6 pb-4">
+                  <button
+                    onClick={carregarMais}
+                    disabled={carregandoMais}
+                    className="h-10 px-6 rounded-xl border border-[var(--color-border)] text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-elevated)] hover:border-primary/30 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {carregandoMais ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Carregando...</>
+                    ) : (
+                      <>Carregar mais ({totalGeral - exibidos} restantes)</>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
