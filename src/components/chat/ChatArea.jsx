@@ -518,13 +518,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       : setQuickReplyAberto(false);
   }, [texto, quickRepliesFiltradas.length]);
 
-  // Finalizar chamado — com motivo — optimistic pra ser instantâneo
+  // Finalizar chamado — captura o ID antes de limpar a tela
   const finalizarMutation = useMutation({
-    mutationFn: ({ motivoId }) => api.post(`/api/tickets/${ticketAtivo?.id}/resolver`, {
+    mutationFn: ({ ticketId, motivoId }) => api.post(`/api/tickets/${ticketId}/resolver`, {
       motivo_id: motivoId || null,
     }),
     onMutate: () => {
-      // Fechar modal e limpar tela imediatamente (não esperar API)
+      // Fechar modal e limpar tela imediatamente
       setModalFechar(false);
       setMotivoSelecionado(null);
       limparTicketAtivo();
@@ -541,14 +541,16 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   });
 
   const handleFecharComMotivo = () => {
-    finalizarMutation.mutate({ motivoId: motivoSelecionado });
+    // Captura o ID ANTES do onMutate limpar o ticketAtivo
+    const id = ticketAtivo?.id;
+    if (!id) return;
+    finalizarMutation.mutate({ ticketId: id, motivoId: motivoSelecionado });
   };
 
-  // Puxar chamado da fila — optimistic update pra ser instantâneo
+  // Puxar chamado da fila — optimistic + foco no input
   const puxarMutation = useMutation({
     mutationFn: () => api.post(`/api/tickets/${ticketAtivo?.id}/aceitar`),
     onMutate: async () => {
-      // Optimistic: atualizar o ticket local imediatamente
       const ticketOtimista = { ...ticketAtivo, status: 'aberto', usuario_id: usuario?.id, atendente_nome: usuario?.nome };
       selecionarTicket(ticketOtimista);
     },
@@ -558,9 +560,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
       toast.success('Chamado puxado para você!');
+      // Foco no campo de digitação
+      setTimeout(() => inputRef.current?.focus(), 100);
     },
     onError: (err) => {
-      // Reverter
       selecionarTicket(ticketAtivo);
       toast.error(err.message);
     },
