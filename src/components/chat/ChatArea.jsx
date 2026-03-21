@@ -275,7 +275,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         tipo: 'texto',
         is_from_me: true,
         is_internal: isNota,
-        status_envio: 'pendente',
+        status_envio: 'enviada',
         criado_em: new Date().toISOString(),
         usuario_nome: usuario?.nome,
       };
@@ -528,15 +528,31 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       // Fechar modal e limpar tela imediatamente
       setModalFechar(false);
       setMotivoSelecionado(null);
+
+      // Optimistic: remover ticket de TODAS as listas da sidebar instantaneamente
+      const ticketId = ticketAtivo?.id;
+      if (ticketId) {
+        const removerDaLista = (old) => {
+          if (!old?.tickets) return old;
+          return { ...old, tickets: old.tickets.filter((t) => t.id !== ticketId) };
+        };
+        queryClient.setQueriesData({ queryKey: ['chamados-meus'] }, removerDaLista);
+        queryClient.setQueriesData({ queryKey: ['chamados-meus-aguardando'] }, removerDaLista);
+        queryClient.setQueriesData({ queryKey: ['chamados-fila'] }, removerDaLista);
+        queryClient.setQueriesData({ queryKey: ['chamados-atendimento'] }, removerDaLista);
+        queryClient.setQueriesData({ queryKey: ['chamados-dispositivo-externo'] }, removerDaLista);
+      }
+
       limparTicketAtivo();
       toast.success('Chamado fechado!');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mensagens'] });
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-dispositivo-externo'] });
     },
     onError: (err) => toast.error(err.message),
   });
@@ -554,6 +570,17 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     onMutate: async () => {
       const ticketOtimista = { ...ticketAtivo, status: 'aberto', usuario_id: usuario?.id, atendente_nome: usuario?.nome };
       selecionarTicket(ticketOtimista);
+
+      // Optimistic: remover da fila e dispositivo externo instantaneamente
+      const ticketId = ticketAtivo?.id;
+      if (ticketId) {
+        const removerDaLista = (old) => {
+          if (!old?.tickets) return old;
+          return { ...old, tickets: old.tickets.filter((t) => t.id !== ticketId) };
+        };
+        queryClient.setQueriesData({ queryKey: ['chamados-fila'] }, removerDaLista);
+        queryClient.setQueriesData({ queryKey: ['chamados-dispositivo-externo'] }, removerDaLista);
+      }
     },
     onSuccess: (data) => {
       selecionarTicket(data);
