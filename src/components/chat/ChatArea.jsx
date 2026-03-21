@@ -1537,7 +1537,6 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
                   <Play className="w-7 h-7 text-neutral-800 dark:text-white ml-0.5" />
                 </div>
               </div>
-              </div>
             </button>
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2"><span>🎥</span><span className="text-sm opacity-80">Vídeo</span></div>
