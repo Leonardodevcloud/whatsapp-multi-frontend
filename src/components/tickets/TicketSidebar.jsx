@@ -1,5 +1,5 @@
 // src/components/tickets/TicketSidebar.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -7,9 +7,18 @@ import { Avatar, Skeleton, EmptyState, Button } from '../ui';
 import { Search, X, MessageSquare, Volume2, VolumeX, Headphones, Users, Inbox, Smartphone } from 'lucide-react';
 import { cn, formatarDataTicket, corStatus } from '../../lib/utils';
 import api from '../../lib/api';
+import wsClient from '../../lib/websocket';
 import toast from 'react-hot-toast';
 
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQADAAB/f39/gICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqenpqalpKOioaCfnp2cm5qZmJeWlZSTkpGQj46NjIuKiYiHhoWEg4KBgIB/fn19fHt6eXh3dnV0c3JxcHBvcG9wb3BvcHFycnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TExcXFxcXFxMTDw8LBwL++vby7urm4t7a1tLOysbCvrq2sq6qpqKempaSjoqGgn56dnJuamZiXlpWUk5KRkI+OjYyLiomIh4aFhIKBgH9+fHt6eXd2dXNycXBvbm1sa2pqaWlpaWlqa2tsbW5vcHFyc3R1dnd4eXp7fH1+f4A=';
+
+// ============ INTERVALOS DE POLLING ============
+// Com WebSocket ativo, o polling vira apenas fallback de segurança
+// WS dispara invalidação imediata — polling é backup lento
+const POLL_MEUS_CHATS = 15000;   // 15s (era 3s)
+const POLL_FILA = 15000;          // 15s (era 3s)
+const POLL_ATENDIMENTO = 30000;   // 30s (era 5s)
+const POLL_EXTERNO = 30000;       // 30s (era 5s)
 
 export default function TicketSidebar() {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
@@ -37,6 +46,39 @@ export default function TicketSidebar() {
     return () => clearTimeout(timer);
   }, [buscaLocal]);
 
+  // ============ WEBSOCKET → INVALIDAÇÃO DE QUERIES ============
+  // Em vez de polling agressivo, o WS dispara refetch cirúrgico
+  useEffect(() => {
+    const invalidarListas = () => {
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-dispositivo-externo'] });
+    };
+
+    // Mensagem nova → atualiza listas (pode mover ticket entre abas)
+    const cleanupMsg = wsClient.on('mensagem:nova', () => {
+      invalidarListas();
+    });
+
+    // Ticket novo na fila
+    const cleanupTicket = wsClient.on('ticket:novo', () => {
+      invalidarListas();
+    });
+
+    // Ticket atualizado (aceito, transferido, etc)
+    const cleanupAtualizado = wsClient.on('ticket:atualizado', () => {
+      invalidarListas();
+    });
+
+    return () => {
+      cleanupMsg();
+      cleanupTicket();
+      cleanupAtualizado();
+    };
+  }, [queryClient]);
+
   // Wrapper: selecionar ticket + marcar como lida
   const handleSelecionarTicket = (ticket) => {
     selecionarTicket(ticket);
@@ -52,6 +94,8 @@ export default function TicketSidebar() {
     }
   };
 
+  // ============ QUERIES COM POLLING REDUZIDO ============
+
   // Meus Chats
   const { data: meusChatsData } = useQuery({
     queryKey: ['chamados-meus', usuario?.id, filtros.busca],
@@ -59,12 +103,14 @@ export default function TicketSidebar() {
       const params = new URLSearchParams();
       params.set('usuario_id', usuario?.id);
       params.set('status', 'aberto');
+      params.set('ordem', 'atividade'); // última atividade primeiro
       if (filtros.busca) params.set('busca', filtros.busca);
       params.set('limite', '50');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!usuario?.id,
-    refetchInterval: 3000,
+    refetchInterval: POLL_MEUS_CHATS,
+    staleTime: 5000, // Evita refetch imediato ao trocar aba e voltar
   });
 
   const { data: meusAguardandoData } = useQuery({
@@ -73,24 +119,28 @@ export default function TicketSidebar() {
       const params = new URLSearchParams();
       params.set('usuario_id', usuario?.id);
       params.set('status', 'aguardando');
+      params.set('ordem', 'atividade');
       params.set('limite', '50');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!usuario?.id,
-    refetchInterval: 5000,
+    refetchInterval: POLL_ATENDIMENTO,
+    staleTime: 5000,
   });
 
-  // Fila
+  // Fila — MAIS ANTIGO PRIMEIRO (ordem=antigo)
   const { data: filaData } = useQuery({
     queryKey: ['chamados-fila', filtros.busca],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('status', 'pendente');
+      params.set('ordem', 'antigo'); // ← CORREÇÃO: mais antigo no topo
       if (filtros.busca) params.set('busca', filtros.busca);
       params.set('limite', '50');
       return api.get(`/api/tickets?${params.toString()}`);
     },
-    refetchInterval: 3000,
+    refetchInterval: POLL_FILA,
+    staleTime: 5000,
   });
 
   // Em Atendimento
@@ -99,11 +149,13 @@ export default function TicketSidebar() {
     queryFn: () => {
       const params = new URLSearchParams();
       params.set('status', 'aberto');
+      params.set('ordem', 'atividade');
       if (filtros.busca) params.set('busca', filtros.busca);
       params.set('limite', '50');
       return api.get(`/api/tickets?${params.toString()}`);
     },
-    refetchInterval: 5000,
+    refetchInterval: POLL_ATENDIMENTO,
+    staleTime: 5000,
   });
 
   // Dispositivo Externo
@@ -121,12 +173,14 @@ export default function TicketSidebar() {
       const params = new URLSearchParams();
       params.set('status', 'pendente');
       params.set('fila_id', filaDispositivoId);
+      params.set('ordem', 'antigo');
       if (filtros.busca) params.set('busca', filtros.busca);
       params.set('limite', '50');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!filaDispositivoId,
-    refetchInterval: 5000,
+    refetchInterval: POLL_EXTERNO,
+    staleTime: 5000,
   });
 
   const meusChats = [...(meusChatsData?.tickets || []), ...(meusAguardandoData?.tickets || [])];
