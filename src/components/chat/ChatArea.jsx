@@ -252,32 +252,40 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     prevCountRef.current = mensagens.length;
   }, [mensagens.length]);
 
-  // WebSocket — APPEND DIRETO no cache (zero ida ao servidor)
+  // WebSocket — APPEND DIRETO no cache + refetch de segurança
   useEffect(() => {
     if (!ticketAtivo?.id) return;
+    const ticketId = ticketAtivo.id;
+
     const c1 = wsClient.on('mensagem:nova', (dados) => {
-      if (dados.ticket_id === ticketAtivo.id) {
-        // Injetar mensagem direto no cache — sem refetch
-        queryClient.setQueryData(['mensagens', ticketAtivo.id], (old) => {
+      // Comparação com == pra cobrir string vs number
+      if (dados.ticket_id == ticketId) {
+        // Append direto no cache (instantâneo)
+        queryClient.setQueryData(['mensagens', ticketId], (old) => {
           if (!old?.mensagens) return old;
-          // Evitar duplicata (optimistic update já pode ter adicionado)
+          // Evitar duplicata
           const jaExiste = old.mensagens.some((m) =>
             m.id === dados.id ||
             (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me)
           );
           if (jaExiste) {
-            // Substituir a mensagem temporária pela real (com id do banco)
+            // Substituir mensagem temporária pela real
             return {
               ...old,
               mensagens: old.mensagens.map((m) =>
                 (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me)
-                  ? { ...dados, ticket_id: ticketAtivo.id }
+                  ? { ...dados, ticket_id: ticketId }
                   : m
               ),
             };
           }
-          return { ...old, mensagens: [...old.mensagens, { ...dados, ticket_id: ticketAtivo.id }] };
+          return { ...old, mensagens: [...old.mensagens, { ...dados, ticket_id: ticketId }] };
         });
+
+        // Safety net: refetch completo após 1.5s pra garantir consistência
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['mensagens', ticketId] });
+        }, 1500);
       }
     });
     const c2 = wsClient.on('contato:digitando', (dados) => {
@@ -285,8 +293,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       setTimeout(() => setDigitando(null), 5000);
     });
     const c3 = wsClient.on('mensagem:deletada', (dados) => {
-      if (dados.ticketId === ticketAtivo.id || dados.ticket_id === ticketAtivo.id) {
-        queryClient.setQueryData(['mensagens', ticketAtivo.id], (old) => {
+      if (dados.ticketId == ticketId || dados.ticket_id == ticketId) {
+        queryClient.setQueryData(['mensagens', ticketId], (old) => {
           if (!old?.mensagens) return old;
           return { ...old, mensagens: old.mensagens.map((m) => m.id === dados.mensagemId ? { ...m, deletada: true } : m) };
         });
@@ -294,14 +302,14 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     });
     const c4 = wsClient.on('mensagem:status', (dados) => {
       if (dados.waMessageId) {
-        queryClient.setQueryData(['mensagens', ticketAtivo.id], (old) => {
+        queryClient.setQueryData(['mensagens', ticketId], (old) => {
           if (!old?.mensagens) return old;
           return { ...old, mensagens: old.mensagens.map((m) => m.wa_message_id === dados.waMessageId ? { ...m, status_envio: dados.status } : m) };
         });
       }
     });
     const c5 = wsClient.on('mensagem:reacao', (dados) => {
-      queryClient.setQueryData(['mensagens', ticketAtivo.id], (old) => {
+      queryClient.setQueryData(['mensagens', ticketId], (old) => {
         if (!old?.mensagens) return old;
         return { ...old, mensagens: old.mensagens.map((m) => m.id === dados.mensagemId ? { ...m, reacao: dados.reacao } : m) };
       });
