@@ -13,12 +13,12 @@ import toast from 'react-hot-toast';
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQADAAB/f39/gICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqenpqalpKOioaCfnp2cm5qZmJeWlZSTkpGQj46NjIuKiYiHhoWEg4KBgIB/fn19fHt6eXh3dnV0c3JxcHBvcG9wb3BvcHFycnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TExcXFxcXFxMTDw8LBwL++vby7urm4t7a1tLOysbCvrq2sq6qpqKempaSjoqGgn56dnJuamZiXlpWUk5KRkI+OjYyLiomIh4aFhIKBgH9+fHt6eXd2dXNycXBvbm1sa2pqaWlpaWlqa2tsbW5vcHFyc3R1dnd4eXp7fH1+f4A=';
 
 // ============ INTERVALOS DE POLLING ============
-// Com WebSocket ativo, o polling vira apenas fallback de segurança
-// WS dispara invalidação imediata — polling é backup lento
-const POLL_MEUS_CHATS = 15000;   // 15s (era 3s)
-const POLL_FILA = 15000;          // 15s (era 3s)
-const POLL_ATENDIMENTO = 30000;   // 30s (era 5s)
-const POLL_EXTERNO = 30000;       // 30s (era 5s)
+// Banco na mesma região (US East) — queries em ~20ms
+// Polling rápido é sustentável agora
+const POLL_MEUS_CHATS = 3000;    // 3s
+const POLL_FILA = 3000;           // 3s
+const POLL_ATENDIMENTO = 5000;    // 5s
+const POLL_EXTERNO = 5000;        // 5s
 
 export default function TicketSidebar() {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
@@ -110,7 +110,7 @@ export default function TicketSidebar() {
     },
     enabled: !!usuario?.id,
     refetchInterval: POLL_MEUS_CHATS,
-    staleTime: 5000, // Evita refetch imediato ao trocar aba e voltar
+    staleTime: 1000, // Evita refetch imediato ao trocar aba e voltar
   });
 
   const { data: meusAguardandoData } = useQuery({
@@ -125,7 +125,7 @@ export default function TicketSidebar() {
     },
     enabled: !!usuario?.id,
     refetchInterval: POLL_ATENDIMENTO,
-    staleTime: 5000,
+    staleTime: 1000,
   });
 
   // Fila — MAIS ANTIGO PRIMEIRO (ordem=antigo)
@@ -140,7 +140,7 @@ export default function TicketSidebar() {
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: POLL_FILA,
-    staleTime: 5000,
+    staleTime: 1000,
   });
 
   // Em Atendimento
@@ -155,7 +155,7 @@ export default function TicketSidebar() {
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: POLL_ATENDIMENTO,
-    staleTime: 5000,
+    staleTime: 1000,
   });
 
   // Dispositivo Externo
@@ -180,7 +180,7 @@ export default function TicketSidebar() {
     },
     enabled: !!filaDispositivoId,
     refetchInterval: POLL_EXTERNO,
-    staleTime: 5000,
+    staleTime: 1000,
   });
 
   const meusChats = [...(meusChatsData?.tickets || []), ...(meusAguardandoData?.tickets || [])];
