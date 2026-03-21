@@ -106,14 +106,71 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const audioChunksRef = useRef([]);
   const timerGravacaoRef = useRef(null);
 
+  // ============ PAGINAÇÃO INFINITA ============
+  const [msgsAntigas, setMsgsAntigas] = useState([]); // Mensagens carregadas ao scrollar pra cima
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
+  const [temMaisAntigas, setTemMaisAntigas] = useState(true);
+
   const { data, isLoading } = useQuery({
     queryKey: ['mensagens', ticketAtivo?.id],
-    queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=100`),
+    queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=50`),
     enabled: !!ticketAtivo?.id,
-    refetchInterval: 3000,   // 3s — banco na mesma região, query ~20ms
-    staleTime: 2000,         // Cache 2s
+    refetchInterval: 3000,
+    staleTime: 2000,
   });
-  const mensagens = data?.mensagens || [];
+
+  // Reset ao trocar de ticket
+  useEffect(() => {
+    setMsgsAntigas([]);
+    setTemMaisAntigas(true);
+  }, [ticketAtivo?.id]);
+
+  // Carregar mensagens mais antigas ao scrollar pro topo
+  const carregarAntigas = async () => {
+    if (carregandoAnteriores || !temMaisAntigas || !ticketAtivo?.id) return;
+    // ID mais antigo entre as já carregadas
+    const msgsAtuais = data?.mensagens || [];
+    const todasIds = [...msgsAntigas, ...msgsAtuais];
+    if (todasIds.length === 0) return;
+    const menorId = todasIds[0]?.id;
+    if (!menorId) return;
+
+    setCarregandoAnteriores(true);
+    try {
+      const scrollEl = chatRef.current;
+      const scrollHeightAntes = scrollEl?.scrollHeight || 0;
+
+      const result = await api.get(`/api/messages/${ticketAtivo.id}?limite=50&cursor=${menorId}`);
+      const novasMsgs = result?.mensagens || [];
+
+      if (novasMsgs.length > 0) {
+        setMsgsAntigas((prev) => [...novasMsgs, ...prev]);
+
+        // Restaurar posição do scroll
+        requestAnimationFrame(() => {
+          if (scrollEl) {
+            scrollEl.scrollTop = scrollEl.scrollHeight - scrollHeightAntes;
+          }
+        });
+      }
+      setTemMaisAntigas(novasMsgs.length >= 50);
+    } catch (err) {
+      console.error('[Chat] Erro ao carregar antigas:', err);
+    } finally {
+      setCarregandoAnteriores(false);
+    }
+  };
+
+  // Detectar scroll no topo
+  const handleScroll = () => {
+    if (!chatRef.current) return;
+    if (chatRef.current.scrollTop < 80 && temMaisAntigas && !carregandoAnteriores) {
+      carregarAntigas();
+    }
+  };
+
+  // Merge: antigas (scroll infinito) + atuais (query)
+  const mensagens = [...msgsAntigas, ...(data?.mensagens || [])];
 
   const { data: respostasRapidas } = useQuery({
     queryKey: ['respostas-rapidas'],
@@ -738,7 +795,16 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       {menuTransferir && <div className="fixed inset-0 z-40" onClick={() => setMenuTransferir(false)} />}
 
       {/* Mensagens */}
-      <div ref={chatRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
+      <div ref={chatRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
+        {/* Loader de mensagens anteriores */}
+        {carregandoAnteriores && (
+          <div className="flex justify-center py-2">
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {!temMaisAntigas && msgsAntigas.length > 0 && (
+          <p className="text-center text-2xs text-[var(--color-text-muted)] py-2">Início da conversa</p>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
