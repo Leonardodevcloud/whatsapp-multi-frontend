@@ -1462,14 +1462,27 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
   );
 }
 
-// ============ LAZY IMAGE — estilo WhatsApp: preview borrado, full no clique ============
+// ============ LAZY IMAGE — IntersectionObserver: só carrega quando visível na tela ============
 function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
+  const [visivel, setVisivel] = useState(false);
   const [fullCarregada, setFullCarregada] = useState(false);
   const [erro, setErro] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisivel(true); observer.disconnect(); } },
+      { rootMargin: '200px' } // Começa a carregar 200px antes de ficar visível
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   if (erro) {
     return (
-      <div className={cn('flex items-center gap-2 px-4 py-3 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+      <div ref={ref} className={cn('flex items-center gap-2 px-4 py-3 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
         <Image className="w-5 h-5 opacity-50" />
         <span className="text-sm opacity-60">Imagem indisponível</span>
       </div>
@@ -1477,34 +1490,35 @@ function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
   }
 
   return (
-    <button
-      onClick={() => {
-        setFullCarregada(true);
-        onLightbox({ url: mediaUrl, tipo: 'imagem' });
-      }}
-      className="block cursor-pointer relative overflow-hidden rounded-lg"
-    >
-      {/* Imagem com blur — carrega lazy, container pequeno = download parcial */}
-      <img
-        src={mediaUrl}
-        alt="Imagem"
-        loading="lazy"
-        onError={() => setErro(true)}
-        className={cn(
-          'max-w-full max-h-48 object-cover transition-all duration-300',
-          fullCarregada ? '' : 'blur-[3px] scale-105'
-        )}
-        style={{ imageRendering: fullCarregada ? 'auto' : 'pixelated' }}
-      />
-      {/* Overlay com ícone de expandir — some depois de clicar */}
-      {!fullCarregada && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-          <div className={cn('w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm', enviada ? 'bg-white/30' : 'bg-black/20')}>
-            <Download className="w-5 h-5 text-white" />
-          </div>
-        </div>
+    <div ref={ref}>
+      {visivel ? (
+        <button
+          onClick={() => { setFullCarregada(true); onLightbox({ url: mediaUrl, tipo: 'imagem' }); }}
+          className="block cursor-pointer relative overflow-hidden rounded-lg"
+        >
+          <img
+            src={mediaUrl}
+            alt="Imagem"
+            onLoad={() => {}}
+            onError={() => setErro(true)}
+            className={cn(
+              'max-w-full max-h-48 object-cover transition-all duration-300',
+              fullCarregada ? '' : 'blur-[3px] scale-105'
+            )}
+          />
+          {!fullCarregada && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm bg-black/20">
+                <Download className="w-5 h-5 text-white" />
+              </div>
+            </div>
+          )}
+        </button>
+      ) : (
+        // Placeholder enquanto não está visível — altura fixa pra evitar layout shift
+        <div className={cn('w-48 h-36 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
       )}
-    </button>
+    </div>
   );
 }
 
