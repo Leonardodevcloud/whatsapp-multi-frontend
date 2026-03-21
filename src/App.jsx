@@ -79,14 +79,13 @@ export default function App() {
     if (logado) {
       const conectarWS = async () => {
         try {
-          const res = await fetch('/api/auth/me', { credentials: 'include' });
+          // Buscar token via API (cookie httpOnly não é legível por JS)
+          const res = await fetch(
+            `${import.meta.env.VITE_API_URL}/api/auth/ws-token`,
+            { credentials: 'include' }
+          );
           if (res.ok) {
-            const cookies = document.cookie.split(';').reduce((acc, c) => {
-              const [k, v] = c.trim().split('=');
-              acc[k] = v;
-              return acc;
-            }, {});
-            const token = cookies['access_token'];
+            const { token } = await res.json();
             if (token) wsClient.connect(token);
           }
         } catch {
