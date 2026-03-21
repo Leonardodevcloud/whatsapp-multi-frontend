@@ -1,5 +1,5 @@
 // src/components/layout/AppLayout.jsx
-// NOVO: Menu horizontal (top bar) + logo com texto "Synapse Chat"
+// NOVO: Menu horizontal (top bar) + logo com texto "Synapse Chat" + indicador WS
 
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
@@ -13,6 +13,7 @@ import { SynapseIconSolid } from '../ui/SynapseLogo';
 import { cn } from '../../lib/utils';
 import { useEffect, useState } from 'react';
 import api from '../../lib/api';
+import wsClient from '../../lib/websocket';
 import GlobalSearch from './GlobalSearch';
 
 const NAV_ITEMS = [
@@ -33,6 +34,7 @@ export default function AppLayout() {
   const { tema, toggleTema } = useThemeStore();
   const navigate = useNavigate();
   const [waStatus, setWaStatus] = useState(null);
+  const [wsStatus, setWsStatus] = useState('desconectado');
 
   useEffect(() => {
     const verificar = async () => {
@@ -44,6 +46,12 @@ export default function AppLayout() {
     verificar();
     const interval = setInterval(verificar, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Observar status do WebSocket
+  useEffect(() => {
+    const cleanup = wsClient.onStatus((status) => setWsStatus(status));
+    return cleanup;
   }, []);
 
   const handleLogout = async () => {
@@ -114,6 +122,23 @@ export default function AppLayout() {
 
         {/* Ações — lado direito */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* Status WebSocket (real-time) */}
+          <div
+            title={
+              wsStatus === 'conectado' ? 'Real-time ativo'
+              : wsStatus === 'conectando' ? 'Reconectando...'
+              : 'Real-time offline'
+            }
+            className="w-9 h-9 rounded-lg flex items-center justify-center"
+          >
+            <div className={cn(
+              'w-2 h-2 rounded-full transition-colors',
+              wsStatus === 'conectado' ? 'bg-emerald-500'
+              : wsStatus === 'conectando' ? 'bg-amber-400 animate-pulse'
+              : 'bg-red-400'
+            )} />
+          </div>
+
           {/* Status WhatsApp */}
           <button
             title={waStatus?.conectado ? 'WhatsApp conectado' : 'WhatsApp desconectado'}
@@ -149,6 +174,18 @@ export default function AppLayout() {
           <Avatar nome={usuario?.nome} size="sm" online className="ml-1" />
         </div>
       </header>
+
+      {/* Banner de reconexão — aparece quando WS está offline */}
+      {wsStatus !== 'conectado' && (
+        <div className={cn(
+          'px-4 py-1.5 text-center text-xs font-medium transition-all',
+          wsStatus === 'conectando'
+            ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+        )}>
+          {wsStatus === 'conectando' ? 'Reconectando ao servidor...' : 'Conexão real-time perdida — tentando reconectar'}
+        </div>
+      )}
 
       {/* Conteúdo */}
       <main className="flex-1 overflow-hidden">
