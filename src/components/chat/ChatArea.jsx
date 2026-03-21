@@ -1462,6 +1462,52 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
   );
 }
 
+// ============ LAZY IMAGE — estilo WhatsApp: preview borrado, full no clique ============
+function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
+  const [fullCarregada, setFullCarregada] = useState(false);
+  const [erro, setErro] = useState(false);
+
+  if (erro) {
+    return (
+      <div className={cn('flex items-center gap-2 px-4 py-3 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+        <Image className="w-5 h-5 opacity-50" />
+        <span className="text-sm opacity-60">Imagem indisponível</span>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => {
+        setFullCarregada(true);
+        onLightbox({ url: mediaUrl, tipo: 'imagem' });
+      }}
+      className="block cursor-pointer relative overflow-hidden rounded-lg"
+    >
+      {/* Imagem com blur — carrega lazy, container pequeno = download parcial */}
+      <img
+        src={mediaUrl}
+        alt="Imagem"
+        loading="lazy"
+        onError={() => setErro(true)}
+        className={cn(
+          'max-w-full max-h-48 object-cover transition-all duration-300',
+          fullCarregada ? '' : 'blur-[3px] scale-105'
+        )}
+        style={{ imageRendering: fullCarregada ? 'auto' : 'pixelated' }}
+      />
+      {/* Overlay com ícone de expandir — some depois de clicar */}
+      {!fullCarregada && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+          <div className={cn('w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-sm', enviada ? 'bg-white/30' : 'bg-black/20')}>
+            <Download className="w-5 h-5 text-white" />
+          </div>
+        </div>
+      )}
+    </button>
+  );
+}
+
 // ============ MEDIA CONTENT — com fix video (item 3) + sticker favoritar (item 6) ============
 function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, onFavoritarSticker, favoritosUrls }) {
   switch (tipo) {
@@ -1469,9 +1515,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
       return (
         <div>
           {mediaUrl ? (
-            <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'imagem' })} className="block cursor-pointer">
-              <img src={mediaUrl} alt="Imagem" className="max-w-full max-h-64 object-cover hover:opacity-90" loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
-            </button>
+            <LazyImage mediaUrl={mediaUrl} corpo={corpo} onLightbox={onLightbox} enviada={enviada} />
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2"><span>📷</span><span className="text-sm opacity-80">Imagem</span></div>
           )}
@@ -1482,37 +1526,17 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
     case 'audio':
       return <AudioBubble corpo={corpo} mediaUrl={mediaUrl} mensagemId={mensagemId} enviada={enviada} />;
 
-    // Video rendering fix (item 3)
+    // Video — lazy load (não faz preload)
     case 'video':
       return (
         <div>
           {mediaUrl ? (
             <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })} className="relative block cursor-pointer group">
-              <video
-                preload="metadata"
-                className="max-w-full max-h-48 rounded-t-2xl bg-black"
-                onError={(e) => {
-                  // Se <video> falhar, substituir por placeholder clicável
-                  e.target.style.display = 'none';
-                  const placeholder = e.target.nextElementSibling;
-                  if (placeholder) placeholder.style.display = 'flex';
-                }}
-              >
-                <source src={mediaUrl} type="video/mp4" />
-                <source src={mediaUrl} type="video/webm" />
-                <source src={mediaUrl} type="video/3gpp" />
-                <source src={mediaUrl} />
-              </video>
-              {/* Placeholder se video falhar */}
-              <div className="items-center justify-center gap-2 px-6 py-8 bg-black/20" style={{ display: 'none' }}>
-                <Play className="w-8 h-8 text-white/80" />
-                <span className={cn('text-sm', enviada ? 'text-white/80' : 'text-[var(--color-text-secondary)]')}>Abrir vídeo</span>
-              </div>
-              {/* Play overlay */}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
-                <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                  <Play className="w-6 h-6 text-neutral-800 ml-0.5" />
+              <div className={cn('flex items-center justify-center gap-3 px-8 py-10 rounded-t-2xl', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+                <div className="w-14 h-14 rounded-full bg-white/90 dark:bg-white/20 flex items-center justify-center shadow-lg">
+                  <Play className="w-7 h-7 text-neutral-800 dark:text-white ml-0.5" />
                 </div>
+              </div>
               </div>
             </button>
           ) : (
