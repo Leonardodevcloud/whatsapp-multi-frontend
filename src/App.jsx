@@ -25,9 +25,16 @@ import { Skeleton } from './components/ui';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30000,
+      // ============ OTIMIZAÇÕES DE PERFORMANCE ============
+      // staleTime alto = dados ficam "frescos" por mais tempo
+      // Com WebSocket ativo, as invalidações são cirúrgicas
+      // Polling de fallback (refetchInterval nos componentes) cuida do rest
+      staleTime: 60000,            // 30s → 60s: dados válidos por 1 min
+      gcTime: 300000,              // 5 min de cache (era cacheTime no v4)
       retry: 1,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,    // Refetch ao reconectar internet
+      // Dados ficam em cache ao trocar de aba e voltar — sem flash de loading
     },
   },
 });
@@ -70,15 +77,10 @@ export default function App() {
   // Conectar WebSocket quando logado
   useEffect(() => {
     if (logado) {
-      // Para WS auth precisamos do access_token — buscar via cookie não funciona em WS
-      // Usar endpoint que retorna token temporário, ou passar via cookie
-      // Simplificação: usar fetch para pegar token e conectar WS
       const conectarWS = async () => {
         try {
           const res = await fetch('/api/auth/me', { credentials: 'include' });
           if (res.ok) {
-            // Extrair token do cookie (não ideal, mas funciona com same-origin)
-            // Em produção, criar endpoint /api/auth/ws-token
             const cookies = document.cookie.split(';').reduce((acc, c) => {
               const [k, v] = c.trim().split('=');
               acc[k] = v;
@@ -95,6 +97,42 @@ export default function App() {
 
       return () => wsClient.disconnect();
     }
+  }, [logado]);
+
+  // ============ WEBSOCKET → INVALIDAÇÃO GLOBAL ============
+  // Eventos WS que afetam múltiplas telas são tratados aqui
+  useEffect(() => {
+    if (!logado) return;
+
+    // Status de mensagem atualizado (entregue, lida)
+    const c1 = wsClient.on('mensagem:status', (dados) => {
+      // Atualizar inline se possível, senão invalidar
+      if (dados.waMessageId) {
+        // Invalidar mensagens do ticket ativo se estiver aberto
+        const ticketAtivo = useTicketStore.getState().ticketAtivo;
+        if (ticketAtivo) {
+          queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+        }
+      }
+    });
+
+    // Reação em mensagem
+    const c2 = wsClient.on('mensagem:reacao', () => {
+      const ticketAtivo = useTicketStore.getState().ticketAtivo;
+      if (ticketAtivo) {
+        queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      }
+    });
+
+    // WhatsApp conectado/desconectado
+    const c3 = wsClient.on('whatsapp:conectado', () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-status'] });
+    });
+    const c4 = wsClient.on('whatsapp:desconectado', () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-status'] });
+    });
+
+    return () => { c1(); c2(); c3(); c4(); };
   }, [logado]);
 
   // Som de notificação — duas notas suaves tipo WhatsApp
