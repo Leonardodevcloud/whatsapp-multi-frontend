@@ -251,29 +251,34 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         // Append direto no cache (instantâneo)
         queryClient.setQueryData(['mensagens', ticketId], (old) => {
           if (!old?.mensagens) return old;
-          // Evitar duplicata
+          // Evitar duplicata — checa id, corpo+tipo, e preview
           const jaExiste = old.mensagens.some((m) =>
             m.id === dados.id ||
-            (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me)
+            (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me) ||
+            (String(m.id).startsWith('preview_') && m.corpo === dados.corpo && !dados._preview)
           );
           if (jaExiste) {
-            // Substituir mensagem temporária pela real
+            // Substituir mensagem temporária/preview pela real
             return {
               ...old,
-              mensagens: old.mensagens.map((m) =>
-                (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me)
-                  ? { ...dados, ticket_id: ticketId }
-                  : m
-              ),
+              mensagens: old.mensagens.map((m) => {
+                if (String(m.id).startsWith('temp_') && m.corpo === dados.corpo && m.is_from_me === dados.is_from_me) {
+                  return { ...dados, ticket_id: ticketId };
+                }
+                if (String(m.id).startsWith('preview_') && m.corpo === dados.corpo && !dados._preview) {
+                  return { ...dados, ticket_id: ticketId };
+                }
+                return m;
+              }),
             };
           }
           return { ...old, mensagens: [...old.mensagens, { ...dados, ticket_id: ticketId }] };
         });
 
-        // Safety net: refetch completo após 1.5s pra garantir consistência
+        // Safety net: refetch completo após 2s pra garantir consistência
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['mensagens', ticketId] });
-        }, 1500);
+        }, 2000);
       }
     });
     const c2 = wsClient.on('contato:digitando', (dados) => {
