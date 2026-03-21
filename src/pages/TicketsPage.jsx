@@ -7,7 +7,7 @@ import { useTicketStore } from '../stores/ticketStore';
 
 export default function TicketsPage() {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
-  const [painelAberto, setPainelAberto] = useState(true);
+  const [painelAberto, setPainelAberto] = useState(false);
 
   return (
     <div className="flex h-full">
