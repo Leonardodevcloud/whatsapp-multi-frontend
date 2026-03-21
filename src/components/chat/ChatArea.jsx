@@ -1522,6 +1522,59 @@ function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
   );
 }
 
+// ============ LAZY VIDEO — IntersectionObserver: thumbnail borrado + play icon ============
+function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
+  const [visivel, setVisivel] = useState(false);
+  const [erro, setErro] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisivel(true); observer.disconnect(); } },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  if (erro) {
+    return (
+      <div ref={ref} className={cn('flex items-center gap-2 px-4 py-3 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+        <Video className="w-5 h-5 opacity-50" />
+        <span className="text-sm opacity-60">Vídeo indisponível</span>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref}>
+      {visivel ? (
+        <button
+          onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })}
+          className="block cursor-pointer relative overflow-hidden rounded-lg"
+        >
+          <video
+            src={mediaUrl}
+            muted
+            preload="metadata"
+            onError={() => setErro(true)}
+            className="max-w-full max-h-48 object-cover blur-[3px] scale-105"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-black/40 backdrop-blur-sm">
+              <Play className="w-6 h-6 text-white ml-0.5" />
+            </div>
+          </div>
+        </button>
+      ) : (
+        <div className={cn('w-48 h-36 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
+      )}
+    </div>
+  );
+}
+
 // ============ MEDIA CONTENT — com fix video (item 3) + sticker favoritar (item 6) ============
 function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, onFavoritarSticker, favoritosUrls }) {
   switch (tipo) {
@@ -1540,18 +1593,12 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
     case 'audio':
       return <AudioBubble corpo={corpo} mediaUrl={mediaUrl} mensagemId={mensagemId} enviada={enviada} />;
 
-    // Video — lazy load (não faz preload)
+    // Video — lazy load estilo WhatsApp (blur + play icon)
     case 'video':
       return (
         <div>
           {mediaUrl ? (
-            <button onClick={() => onLightbox({ url: mediaUrl, tipo: 'video' })} className="relative block cursor-pointer group">
-              <div className={cn('flex items-center justify-center gap-3 px-8 py-10 rounded-t-2xl', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
-                <div className="w-14 h-14 rounded-full bg-white/90 dark:bg-white/20 flex items-center justify-center shadow-lg">
-                  <Play className="w-7 h-7 text-neutral-800 dark:text-white ml-0.5" />
-                </div>
-              </div>
-            </button>
+            <LazyVideo mediaUrl={mediaUrl} corpo={corpo} onLightbox={onLightbox} enviada={enviada} />
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2"><span>🎥</span><span className="text-sm opacity-80">Vídeo</span></div>
           )}
