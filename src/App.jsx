@@ -29,8 +29,8 @@ const queryClient = new QueryClient({
       // staleTime alto = dados ficam "frescos" por mais tempo
       // Com WebSocket ativo, as invalidações são cirúrgicas
       // Polling de fallback (refetchInterval nos componentes) cuida do rest
-      staleTime: 60000,            // 30s → 60s: dados válidos por 1 min
-      gcTime: 300000,              // 5 min de cache (era cacheTime no v4)
+      staleTime: 2000,             // 2s — banco rápido, polling frequente OK
+      gcTime: 300000,              // 5 min de cache
       retry: 1,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,    // Refetch ao reconectar internet
