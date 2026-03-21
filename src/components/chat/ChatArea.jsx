@@ -110,8 +110,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     queryKey: ['mensagens', ticketAtivo?.id],
     queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=100`),
     enabled: !!ticketAtivo?.id,
-    refetchInterval: 30000,  // 3s → 30s backup (WS cuida do real-time)
-    staleTime: 10000,        // Cache 10s — troca de chat e volta sem refetch
+    refetchInterval: 3000,   // 3s — banco na mesma região, query ~20ms
+    staleTime: 2000,         // Cache 2s
   });
   const mensagens = data?.mensagens || [];
 
