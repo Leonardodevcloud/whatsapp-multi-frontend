@@ -1,7 +1,6 @@
 // src/components/chat/ChatArea.jsx
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTicketStore } from '../../stores/ticketStore';
 import { useAuthStore } from '../../stores/authStore';
 import { Avatar, Button, Skeleton, EmptyState } from '../ui';
@@ -232,22 +231,11 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     return r.atalho.toLowerCase().includes(busca) || r.titulo.toLowerCase().includes(busca);
   });
 
-  // Virtualizer para chat — renderiza só mensagens visíveis
-  const virtualizer = useVirtualizer({
-    count: mensagens.length,
-    getScrollElement: () => chatRef.current,
-    estimateSize: () => 72, // Altura estimada de cada mensagem
-    overscan: 10, // Renderiza 10 extras acima/abaixo pra scroll suave
-  });
-
   // Auto-scroll ao receber mensagem nova
   const prevCountRef = useRef(0);
   useEffect(() => {
-    if (mensagens.length > prevCountRef.current) {
-      // Scroll pro final — com pequeno delay pro virtualizer atualizar
-      requestAnimationFrame(() => {
-        virtualizer.scrollToIndex(mensagens.length - 1, { align: 'end', behavior: 'smooth' });
-      });
+    if (mensagens.length > prevCountRef.current && chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
     prevCountRef.current = mensagens.length;
   }, [mensagens.length]);
@@ -744,10 +732,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       {/* Fechar menu transferir */}
       {menuTransferir && <div className="fixed inset-0 z-40" onClick={() => setMenuTransferir(false)} />}
 
-      {/* Mensagens — Virtual Scrolling */}
-      <div ref={chatRef} className="flex-1 overflow-y-auto scrollbar-thin">
+      {/* Mensagens */}
+      <div ref={chatRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
         {isLoading ? (
-          <div className="space-y-3 px-4 py-3">
+          <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className={cn('flex', i % 2 === 0 ? 'justify-start' : 'justify-end')}>
                 <Skeleton className={cn('h-10 rounded-2xl', i % 2 === 0 ? 'w-64' : 'w-48')} />
@@ -755,7 +743,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             ))}
           </div>
         ) : mensagens.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Send className="w-7 h-7 text-primary" />
             </div>
@@ -763,54 +751,30 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             <p className="text-xs text-[var(--color-text-muted)]">Envie a primeira mensagem pelo campo abaixo</p>
           </div>
         ) : (
-          <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative',
-            }}
-          >
-            {virtualizer.getVirtualItems().map((virtualItem) => {
-              const msg = mensagens[virtualItem.index];
-              if (!msg) return null;
-              return (
-                <div
-                  key={msg.id}
-                  data-index={virtualItem.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualItem.start}px)`,
-                  }}
-                  className="px-4 py-0.5"
-                >
-                  <div className={cn('flex items-start gap-2', modoEncaminhar && 'cursor-pointer')} onClick={() => modoEncaminhar && toggleMsgSelecionada(msg.id)}>
-                    {modoEncaminhar && (
-                      <div className="flex items-center pt-2 shrink-0">
-                        <div className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
-                          msgsSelecionadas.has(msg.id) ? 'bg-primary border-primary' : 'border-[var(--color-border)]')}>
-                          {msgsSelecionadas.has(msg.id) && <Check className="w-3 h-3 text-white" />}
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <ChatBubble
-                        mensagem={msg}
-                        onLightbox={setLightbox}
-                        modoEncaminhar={modoEncaminhar}
-                        onIniciarEncaminhar={() => { setModoEncaminhar(true); setMsgsSelecionadas(new Set([msg.id])); }}
-                        onFavoritarSticker={handleFavoritarSticker}
-                        favoritosUrls={favoritosUrls}
-                      />
+          <>
+            {mensagens.map((msg) => (
+              <div key={msg.id} className={cn('flex items-start gap-2', modoEncaminhar && 'cursor-pointer')} onClick={() => modoEncaminhar && toggleMsgSelecionada(msg.id)}>
+                {modoEncaminhar && (
+                  <div className="flex items-center pt-2 shrink-0">
+                    <div className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
+                      msgsSelecionadas.has(msg.id) ? 'bg-primary border-primary' : 'border-[var(--color-border)]')}>
+                      {msgsSelecionadas.has(msg.id) && <Check className="w-3 h-3 text-white" />}
                     </div>
                   </div>
+                )}
+                <div className="flex-1">
+                  <ChatBubble
+                    mensagem={msg}
+                    onLightbox={setLightbox}
+                    modoEncaminhar={modoEncaminhar}
+                    onIniciarEncaminhar={() => { setModoEncaminhar(true); setMsgsSelecionadas(new Set([msg.id])); }}
+                    onFavoritarSticker={handleFavoritarSticker}
+                    favoritosUrls={favoritosUrls}
+                  />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
