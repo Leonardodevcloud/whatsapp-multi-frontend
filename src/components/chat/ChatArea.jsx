@@ -84,6 +84,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [gravando, setGravando] = useState(false);
   const [tempoGravacao, setTempoGravacao] = useState(0);
   const [menuAnexo, setMenuAnexo] = useState(false);
+  const [modalContato, setModalContato] = useState(false);
+  const [contatoNome, setContatoNome] = useState('');
+  const [contatoTelefone, setContatoTelefone] = useState('');
   const [digitando, setDigitando] = useState(null);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
   const [melhorandoTexto, setMelhorandoTexto] = useState(false);
@@ -135,6 +138,12 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   useEffect(() => {
     setMsgsAntigas([]);
     setTemMaisAntigas(true);
+
+    // Blue ticks — marcar como lida no WhatsApp + no banco
+    if (ticketAtivo?.id) {
+      api.post('/api/whatsapp/marcar-lida', { ticket_id: ticketAtivo.id }).catch(() => {});
+      api.put(`/api/messages/${ticketAtivo.id}/lidas`).catch(() => {});
+    }
   }, [ticketAtivo?.id]);
 
   // Carregar mensagens mais antigas ao scrollar pro topo
@@ -351,8 +360,12 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       }
     });
     const c2 = wsClient.on('contato:digitando', (dados) => {
-      setDigitando(dados);
-      setTimeout(() => setDigitando(null), 5000);
+      // Só mostrar se é do contato do chat ativo
+      const tel = ticketAtivo?.contato_telefone?.replace(/\D/g, '');
+      if (tel && dados.telefone?.includes(tel)) {
+        setDigitando(dados);
+        setTimeout(() => setDigitando(null), 5000);
+      }
     });
     const c3 = wsClient.on('mensagem:deletada', (dados) => {
       if (dados.ticketId == ticketId || dados.ticket_id == ticketId) {
@@ -1251,6 +1264,12 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                   >
                     <span className="w-4 h-4 flex items-center justify-center text-primary">🎭</span> Sticker
                   </button>
+                  <button
+                    onClick={() => { setMenuAnexo(false); setModalContato(true); setContatoNome(''); setContatoTelefone(''); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--color-surface-elevated)] text-left"
+                  >
+                    <UserPlus className="w-4 h-4 text-primary" /> Contato
+                  </button>
                 </div>
               )}
             </div>
@@ -1325,6 +1344,56 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       )}
 
       {/* Modal confirmar puxar chamado */}
+      {/* Modal enviar contato (vCard) */}
+      {modalContato && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setModalContato(false)}>
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                <UserPlus className="w-6 h-6 text-primary" />
+              </div>
+              <h3 className="text-sm font-semibold">Enviar contato</h3>
+            </div>
+            <div className="space-y-3 mb-4">
+              <input
+                value={contatoNome}
+                onChange={(e) => setContatoNome(e.target.value)}
+                placeholder="Nome do contato"
+                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                autoFocus
+              />
+              <input
+                value={contatoTelefone}
+                onChange={(e) => setContatoTelefone(e.target.value)}
+                placeholder="Telefone (ex: 5571999999999)"
+                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                onKeyDown={(e) => { if (e.key === 'Enter' && contatoNome.trim() && contatoTelefone.trim()) {
+                  api.post('/api/whatsapp/enviar-contato', { ticket_id: ticketAtivo.id, contact_name: contatoNome.trim(), contact_phone: contatoTelefone.trim() })
+                    .then(() => { toast.success('Contato enviado'); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
+                    .catch((err) => toast.error(err.message || 'Erro'));
+                }}}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setModalContato(false)}
+                className="flex-1 h-9 rounded-lg border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-surface-elevated)]">
+                Cancelar
+              </button>
+              <button
+                disabled={!contatoNome.trim() || !contatoTelefone.trim()}
+                onClick={() => {
+                  api.post('/api/whatsapp/enviar-contato', { ticket_id: ticketAtivo.id, contact_name: contatoNome.trim(), contact_phone: contatoTelefone.trim() })
+                    .then(() => { toast.success('Contato enviado'); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
+                    .catch((err) => toast.error(err.message || 'Erro'));
+                }}
+                className="flex-1 h-9 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+                Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmaPuxar && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setConfirmaPuxar(false)}>
           <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
