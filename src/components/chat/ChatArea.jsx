@@ -1974,15 +1974,25 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
       );
     }
 
-    case 'contato':
+    case 'contato': {
+      // Extrair nome limpo (remove emoji 👤 se tiver)
+      const nomeContato = (corpo || 'Contato').replace(/^👤\s*/, '');
+      const iniciais = nomeContato.split(' ').map(p => p[0]).join('').substring(0, 2).toUpperCase();
       return (
-        <div className="px-4 pt-2">
-          <div className={cn('flex items-center gap-2 p-2 rounded-lg', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
-            <span className="text-2xl">👤</span>
-            <p className="text-sm">{corpo || 'Contato'}</p>
+        <div className="px-3 pt-2">
+          <div className={cn('flex items-center gap-3 p-3 rounded-xl', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
+            <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-medium',
+              enviada ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary')}>
+              {iniciais || '?'}
+            </div>
+            <div className="min-w-0">
+              <p className={cn('text-sm font-medium truncate', enviada ? 'text-white' : 'text-[var(--color-text)]')}>{nomeContato}</p>
+              <p className={cn('text-2xs', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>Contato compartilhado</p>
+            </div>
           </div>
         </div>
       );
+    }
 
     // Sticker com botão favoritar no hover (item 6)
     case 'sticker':
