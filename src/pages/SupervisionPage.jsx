@@ -131,7 +131,7 @@ export default function SupervisionPage() {
               {atendentes.map((a) => (
                 <div key={a.id} className="px-4 py-3 flex items-center gap-3">
                   <div className="relative">
-                    <Avatar nome={a.nome} size="sm" />
+                    <Avatar nome={a.nome} size="sm" src={a.avatar_url} />
                     <div className={cn('absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[var(--color-surface)]',
                       a.online ? 'bg-emerald-500' : 'bg-gray-300')} />
                   </div>

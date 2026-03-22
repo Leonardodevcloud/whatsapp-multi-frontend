@@ -205,7 +205,7 @@ export default function ReportsPage() {
                   <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0">
                     <td className="py-2.5 pr-4">
                       <div className="flex items-center gap-2.5">
-                        <Avatar nome={a.nome} size="sm" online={a.online} />
+                        <Avatar nome={a.nome} size="sm" online={a.online} src={a.avatar_url} />
                         <span className="font-medium">{a.nome}</span>
                       </div>
                     </td>

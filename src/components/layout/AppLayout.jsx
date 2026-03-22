@@ -172,7 +172,7 @@ export default function AppLayout() {
           </button>
 
           {/* Avatar */}
-          <Avatar nome={usuario?.nome} size="sm" online className="ml-1" />
+          <Avatar nome={usuario?.nome} src={usuario?.avatar_url} size="sm" online className="ml-1" />
         </div>
       </header>
 
