@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, EmptyState } from '../components/ui';
 import {
-  Settings, Wifi, WifiOff, QrCode, RefreshCw, LogOut, Clock,
-  Tag, Plus, Pencil, Trash2, GripVertical, Check, X,
+  Settings, Wifi, WifiOff, QrCode, RefreshCw, LogOut, Clock, Phone,
+  Tag, Plus, Pencil, Trash2, GripVertical, Check, X, User,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { QRCodeSVG } from 'qrcode.react';
@@ -25,7 +25,6 @@ export default function SettingsPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-xl font-display font-semibold mb-6">Configurações</h1>
 
-        {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-[var(--color-surface-elevated)] rounded-xl p-1">
           {ABAS_CONFIG.map(({ id, label, icon: Icon }) => (
             <button
@@ -52,7 +51,58 @@ export default function SettingsPage() {
 }
 
 // ============================================================
-// WHATSAPP
+// HEARTBEAT ANIMATION CSS
+// ============================================================
+const heartbeatStyles = `
+@keyframes heartbeat-draw {
+  0% { stroke-dashoffset: 200; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes heartbeat-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(34,197,94,0.3)); }
+  50% { filter: drop-shadow(0 0 8px rgba(34,197,94,0.6)); }
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+`;
+
+function HeartbeatAnimation({ conectado }) {
+  if (!conectado) {
+    return (
+      <div className="flex items-center justify-center" style={{ width: 120, height: 50 }}>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-red-400" style={{ animation: 'dot-pulse 1.5s ease-in-out infinite' }} />
+          <span className="text-xs font-medium text-red-400">Offline</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: 120, height: 50, animation: 'heartbeat-glow 3s ease-in-out infinite' }}>
+      <svg viewBox="0 0 120 50" width="120" height="50">
+        <path
+          d="M0 25 L20 25 L28 25 L33 8 L38 42 L43 15 L48 35 L53 25 L70 25 L120 25"
+          fill="none"
+          stroke="#22c55e"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="200"
+          style={{ animation: 'heartbeat-draw 2s linear infinite' }}
+        />
+        <circle cx="118" cy="25" r="3" fill="#22c55e" opacity="0.6">
+          <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+    </div>
+  );
+}
+
+// ============================================================
+// WHATSAPP — redesign
 // ============================================================
 function WhatsAppSection() {
   const [qr, setQr] = useState(null);
@@ -61,6 +111,13 @@ function WhatsAppSection() {
     queryKey: ['whatsapp-status'],
     queryFn: () => api.get('/api/whatsapp/status'),
     refetchInterval: 5000,
+  });
+
+  const { data: perfil } = useQuery({
+    queryKey: ['whatsapp-perfil'],
+    queryFn: () => api.get('/api/whatsapp/perfil'),
+    enabled: !!status?.conectado,
+    staleTime: 60000,
   });
 
   useEffect(() => {
@@ -94,74 +151,119 @@ function WhatsAppSection() {
   });
 
   const conectado = status?.conectado;
+  const numero = perfil?.numero;
+  const nome = perfil?.nome;
+  const foto = perfil?.foto;
+
+  const formatarNumero = (num) => {
+    if (!num) return '—';
+    const limpo = num.replace(/\D/g, '');
+    if (limpo.length === 13) return `+${limpo.slice(0,2)} (${limpo.slice(2,4)}) ${limpo.slice(4,9)}-${limpo.slice(9)}`;
+    if (limpo.length === 12) return `+${limpo.slice(0,2)} (${limpo.slice(2,4)}) ${limpo.slice(4,8)}-${limpo.slice(8)}`;
+    return num;
+  };
+
+  const formatarTempo = (seg) => {
+    if (!seg) return '—';
+    const h = Math.floor(seg / 3600);
+    const m = Math.floor((seg % 3600) / 60);
+    if (h > 0) return `${h}h ${m}min`;
+    return `${m}min`;
+  };
 
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6">
-      <div className="flex items-center gap-3 mb-6">
-        {conectado ? (
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-            <Wifi className="w-5 h-5 text-emerald-600" />
+    <>
+      <style>{heartbeatStyles}</style>
+
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
+        {/* Header com perfil + heartbeat */}
+        <div className="p-6">
+          <div className="flex items-center gap-5">
+            {/* Avatar */}
+            <div className="relative shrink-0">
+              {foto ? (
+                <img src={foto} alt="Perfil" className="w-16 h-16 rounded-2xl object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+              ) : null}
+              <div className={cn('w-16 h-16 rounded-2xl items-center justify-center', foto ? 'hidden' : 'flex',
+                conectado ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-red-100 dark:bg-red-900/30')}>
+                {conectado ? <Wifi className="w-7 h-7 text-emerald-600" /> : <WifiOff className="w-7 h-7 text-red-500" />}
+              </div>
+              {/* Status dot */}
+              <div className={cn('absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-[var(--color-surface)]',
+                conectado ? 'bg-emerald-500' : 'bg-red-400')} />
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-semibold truncate">{nome || 'WhatsApp'}</h2>
+              {numero && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Phone className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+                  <span className="text-sm text-[var(--color-text-secondary)]">{formatarNumero(numero)}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
+                  conectado ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400')}>
+                  <span className={cn('w-1.5 h-1.5 rounded-full', conectado ? 'bg-emerald-500' : 'bg-red-400')} />
+                  {conectado ? 'Conectado' : 'Desconectado'}
+                </span>
+                {conectado && status?.tempoOnline && (
+                  <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> {formatarTempo(status.tempoOnline)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Heartbeat animation */}
+            <div className="shrink-0">
+              <HeartbeatAnimation conectado={conectado} />
+            </div>
           </div>
-        ) : (
-          <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-            <WifiOff className="w-5 h-5 text-red-500 animate-pulse-dot" />
+        </div>
+
+        {/* QR Code area */}
+        {!conectado && qr && (
+          <div className="border-t border-[var(--color-border)] px-6 py-8">
+            <div className="flex flex-col items-center">
+              <div className="bg-white p-4 rounded-2xl shadow-sm">
+                <QRCodeSVG value={qr} size={220} level="M" />
+              </div>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-4 font-medium">Escaneie o QR Code com seu WhatsApp</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">Abra WhatsApp &gt; Dispositivos vinculados &gt; Vincular dispositivo</p>
+            </div>
           </div>
         )}
-        <div>
-          <h2 className="text-base font-semibold">WhatsApp</h2>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            {conectado ? `Conectado • ${status?.usuario?.nome || ''}` : 'Desconectado'}
-          </p>
-        </div>
-      </div>
 
-      {conectado && (
-        <div className="space-y-3 mb-6">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[var(--color-text-muted)]">Número</span>
-            <span className="font-medium">{status?.usuario?.numero || '—'}</span>
+        {!conectado && !qr && (
+          <div className="border-t border-[var(--color-border)] px-6 py-8">
+            <div className="flex flex-col items-center">
+              <QrCode className="w-12 h-12 text-[var(--color-text-muted)] mb-3" />
+              <p className="text-sm text-[var(--color-text-muted)]">Aguardando QR Code...</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">Clique em reconectar para gerar um novo</p>
+            </div>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[var(--color-text-muted)]">Tempo online</span>
-            <span className="font-medium flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" /> {status?.tempoOnline || '—'}
-            </span>
-          </div>
-        </div>
-      )}
+        )}
 
-      {!conectado && qr && (
-        <div className="flex flex-col items-center py-6 mb-6 bg-white rounded-xl">
-          <QRCodeSVG value={qr} size={256} level="M" />
-          <p className="text-sm text-neutral-500 mt-4">Escaneie o QR Code com seu WhatsApp</p>
-          <p className="text-xs text-neutral-400 mt-1">Abra WhatsApp &gt; Dispositivos vinculados &gt; Vincular dispositivo</p>
-        </div>
-      )}
-
-      {!conectado && !qr && (
-        <div className="text-center py-8 mb-6">
-          <QrCode className="w-12 h-12 text-[var(--color-text-muted)] mx-auto mb-3" />
-          <p className="text-sm text-[var(--color-text-muted)]">Aguardando QR Code...</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">Clique em reconectar para gerar um novo</p>
-        </div>
-      )}
-
-      <div className="flex gap-3">
-        <Button variant="secondary" className="flex-1" onClick={() => reconectarMutation.mutate()} loading={reconectarMutation.isPending}>
-          <RefreshCw className="w-4 h-4" /> Reconectar
-        </Button>
-        {conectado && (
-          <Button variant="danger" onClick={() => logoutMutation.mutate()} loading={logoutMutation.isPending}>
-            <LogOut className="w-4 h-4" /> Desconectar
+        {/* Actions */}
+        <div className="border-t border-[var(--color-border)] px-6 py-4 flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={() => reconectarMutation.mutate()} loading={reconectarMutation.isPending}>
+            <RefreshCw className="w-4 h-4" /> Reconectar
           </Button>
-        )}
+          {conectado && (
+            <Button variant="danger" onClick={() => logoutMutation.mutate()} loading={logoutMutation.isPending}>
+              <LogOut className="w-4 h-4" /> Desconectar
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 // ============================================================
-// MOTIVOS DE ATENDIMENTO
+// MOTIVOS DE ATENDIMENTO (unchanged)
 // ============================================================
 function MotivosSection() {
   const queryClient = useQueryClient();
@@ -224,7 +326,7 @@ function MotivosSection() {
   };
 
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
       <div className="flex items-center gap-3 mb-2">
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
           <Tag className="w-5 h-5 text-primary" />
@@ -237,7 +339,6 @@ function MotivosSection() {
         </div>
       </div>
 
-      {/* Adicionar novo */}
       <div className="flex gap-2 mt-5 mb-5">
         <input
           value={novoNome}
@@ -251,7 +352,6 @@ function MotivosSection() {
         </Button>
       </div>
 
-      {/* Lista */}
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -279,7 +379,6 @@ function MotivosSection() {
               <GripVertical className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
 
               {editandoId === m.id ? (
-                // Modo edição
                 <div className="flex-1 flex items-center gap-2">
                   <input
                     value={editandoNome}
@@ -299,7 +398,6 @@ function MotivosSection() {
                   </button>
                 </div>
               ) : (
-                // Modo visualização
                 <>
                   <span className={cn('flex-1 text-sm', m.ativo ? 'text-[var(--color-text)]' : 'text-[var(--color-text-muted)] line-through')}>
                     {m.nome}
