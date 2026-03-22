@@ -1006,6 +1006,21 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                       inputRef.current?.focus();
                     }}
                     buscaTermo={buscaChatAberta ? termoBusca : null}
+                    onGerarIA={async (textoCliente) => {
+                      try {
+                        toast.loading('Gerando resposta...', { id: 'ia-gen' });
+                        const data = await api.post(`/api/ai/sugestao/${ticketAtivo.id}`, { mensagem_cliente: textoCliente });
+                        toast.dismiss('ia-gen');
+                        if (data.sugestao && !data.desativada) {
+                          setTexto(data.sugestao);
+                          setReplyTo(msg);
+                          inputRef.current?.focus();
+                          toast.success('Sugestão inserida!');
+                        } else {
+                          toast.error('IA não gerou sugestão');
+                        }
+                      } catch { toast.dismiss('ia-gen'); toast.error('Erro ao gerar resposta'); }
+                    }}
                   />
                 </div>
               </div>
@@ -1065,7 +1080,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         </div>
       )}
 
-      <AiPanel ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
+      <AiPanel key={ticketAtivo.id} ticketId={ticketAtivo.id} onUsarSugestao={(t) => setTexto(t)} />
 
       {/* ========= BARRA "PUXAR CHAMADO" — aparece no lugar do input quando pendente ========= */}
       {ticketAtivo.status === 'pendente' && (
@@ -1275,11 +1290,16 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
               )}
             </div>
 
-            <textarea ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={handleKeyDown}
+            <textarea ref={inputRef} value={texto} onChange={(e) => {
+                setTexto(e.target.value);
+                // Auto-grow
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+              }} onKeyDown={handleKeyDown}
               placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
               rows={1}
-              className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 max-h-32 border-0"
-              style={{ minHeight: '40px' }} />
+              className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0"
+              style={{ minHeight: '40px', maxHeight: '128px' }} />
 
             {/* Botão IA — melhorar texto */}
             {texto.trim().length > 3 && (
@@ -1603,7 +1623,7 @@ function Lightbox({ url, tipo, onFechar }) {
 }
 
 // ============ CHAT BUBBLE — com fix menu encaminhar (item 2) + sticker favoritar (item 6) ============
-function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, onEditar, buscaTermo }) {
+function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, onEditar, buscaTermo, onGerarIA }) {
   const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada, quoted_corpo, quoted_tipo, quoted_message_id, atualizado_em } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
@@ -1656,9 +1676,36 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
 
   const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+  const [swipeX, setSwipeX] = useState(0);
+  const touchStartRef = useRef(null);
+
+  const handleTouchStart = (e) => {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, time: Date.now() };
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartRef.current || deletada || modoEncaminhar) return;
+    const dx = e.touches[0].clientX - touchStartRef.current.x;
+    const dy = Math.abs(e.touches[0].clientY - touchStartRef.current.y);
+    // Só swipe horizontal (não vertical = scroll)
+    if (dy > 30) { touchStartRef.current = null; setSwipeX(0); return; }
+    // Swipe pra direita em msg recebida, pra esquerda em msg enviada
+    const dir = enviada ? Math.min(0, dx) : Math.max(0, dx);
+    setSwipeX(Math.abs(dir) > 80 ? (dir > 0 ? 80 : -80) : dir);
+  };
+
+  const handleTouchEnd = () => {
+    if (Math.abs(swipeX) >= 60 && onReply) {
+      onReply(mensagem);
+    }
+    setSwipeX(0);
+    touchStartRef.current = null;
+  };
+
   return (
-    <div className={cn('flex py-0.5', !modoEncaminhar && 'group', enviada ? 'justify-end' : 'justify-start')}>
-      <div className="relative max-w-[75%]">
+    <div className={cn('flex py-0.5', !modoEncaminhar && 'group', enviada ? 'justify-end' : 'justify-start')}
+      onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+      <div className="relative max-w-[65%]" style={{ transform: swipeX ? `translateX(${swipeX}px)` : undefined, transition: swipeX ? 'none' : 'transform 0.2s ease' }}>
         {/* Menu de ações (item 2 — fix z-index e backdrop) */}
         {!deletada && !modoEncaminhar && (
           <div className={cn('absolute top-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-30',
@@ -1702,6 +1749,13 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
                 className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
                 <ArrowRightLeft className="w-3.5 h-3.5" /> Encaminhar
               </button>
+              {/* Gerar resposta IA — só mensagens do contato */}
+              {!enviada && tipo === 'texto' && corpo?.length > 5 && onGerarIA && (
+                <button onClick={() => { onGerarIA(corpo); setMenuAberto(false); }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-primary/5 flex items-center gap-2.5 text-primary transition-colors">
+                  <Sparkles className="w-3.5 h-3.5" /> Responder com IA
+                </button>
+              )}
               {/* Editar — só enviadas, tipo texto, dentro de 15min */}
               {enviada && !deletada && tipo === 'texto' && ((Date.now() - new Date(criado_em).getTime()) / 60000) < 15 && (
                 <button onClick={() => { if (onEditar) onEditar(mensagem); setMenuAberto(false); }}
@@ -1777,6 +1831,16 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
           </div>
         </div>
 
+        {/* Indicador de swipe-to-reply */}
+        {Math.abs(swipeX) > 20 && (
+          <div className={cn('absolute top-1/2 -translate-y-1/2', enviada ? '-left-8' : '-right-8')}>
+            <div className={cn('w-6 h-6 rounded-full flex items-center justify-center transition-all',
+              Math.abs(swipeX) >= 60 ? 'bg-primary text-white scale-110' : 'bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]')}>
+              <MessageSquare className="w-3 h-3" />
+            </div>
+          </div>
+        )}
+
         {/* Reação exibida */}
         {reacaoLocal && (
           <div className={cn('absolute -bottom-3', enviada ? 'right-2' : 'left-2')}>
@@ -1828,7 +1892,7 @@ function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
             onLoad={() => {}}
             onError={() => setErro(true)}
             className={cn(
-              'max-w-full max-h-48 object-cover transition-all duration-300',
+              'max-w-full max-h-40 object-cover transition-all duration-300 rounded-lg',
               fullCarregada ? '' : 'blur-[3px] scale-105'
             )}
           />
@@ -1842,7 +1906,7 @@ function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
         </button>
       ) : (
         // Placeholder enquanto não está visível — altura fixa pra evitar layout shift
-        <div className={cn('w-48 h-36 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
+        <div className={cn('w-40 h-32 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
       )}
     </div>
   );
@@ -1886,7 +1950,7 @@ function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
             muted
             preload="metadata"
             onError={() => setErro(true)}
-            className="max-w-full max-h-48 object-cover blur-[3px] scale-105"
+            className="max-w-full max-h-40 object-cover blur-[3px] scale-105 rounded-lg"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <div className="w-12 h-12 rounded-full flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -1895,7 +1959,7 @@ function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
           </div>
         </button>
       ) : (
-        <div className={cn('w-48 h-36 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
+        <div className={cn('w-40 h-32 rounded-lg animate-pulse', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')} />
       )}
     </div>
   );
