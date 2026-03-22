@@ -1636,13 +1636,31 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
   const [reacaoAberta, setReacaoAberta] = useState(false);
   const [reacaoLocal, setReacaoLocal] = useState(mensagem.reacao || null);
 
-  if (tipo === 'sistema') return (
-    <div className="flex justify-center py-3">
-      <div className="bg-[var(--color-surface-elevated)] border border-[var(--color-border)] px-4 py-2 rounded-xl text-center">
-        <span className="text-xs text-[var(--color-text-secondary)] font-medium">{corpo}</span>
+  if (tipo === 'sistema') {
+    // Destacar nome do atendente em mensagens de sistema
+    const renderSistema = (text) => {
+      const patterns = [
+        /^(.+?)(visualizou|finalizou|iniciou|transferiu|fechou)/,
+        /atribuído para (.+?)$/,
+        /transferido para (.+?)$/,
+      ];
+      // Tenta match "Nome ação..."
+      const m1 = text.match(/^(.+?)\s(visualizou|finalizou|iniciou|transferiu|fechou)/);
+      if (m1) return <><span className="font-semibold text-primary">{m1[1]}</span>{text.slice(m1[1].length)}</>;
+      // Tenta match "...para Nome"
+      const m2 = text.match(/(atribuído para|transferido para)\s(.+)$/);
+      if (m2) return <>{text.slice(0, text.indexOf(m2[2]))}<span className="font-semibold text-primary">{m2[2]}</span></>;
+      return text;
+    };
+
+    return (
+      <div className="flex justify-center py-3">
+        <div className="bg-[var(--color-surface-elevated)] border border-[var(--color-border)] px-4 py-2 rounded-xl text-center">
+          <span className="text-xs text-[var(--color-text-secondary)]">{renderSistema(corpo)}</span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   if (is_internal) return (
     <div className="flex justify-end py-0.5">
@@ -1744,7 +1762,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
         {menuAberto && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
-            <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl z-50 py-1.5 min-w-[170px]',
+            <div className={cn('absolute bottom-full mb-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl z-50 py-1.5 min-w-[170px]',
               enviada ? 'right-0' : 'left-0')}>
               {/* Responder */}
               <button onClick={() => { if (onReply) onReply(mensagem); setMenuAberto(false); }}

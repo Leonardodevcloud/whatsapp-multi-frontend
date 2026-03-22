@@ -309,10 +309,14 @@ function HorarioSection() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['horario-config'], queryFn: () => api.get('/api/whatsapp/horario') });
   const [horarios, setHorarios] = useState([]);
+  const [bloquearGrupos, setBloquearGrupos] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    if (data?.horarios) setHorarios(data.horarios);
+    if (data?.horarios) {
+      setHorarios(data.horarios);
+      setBloquearGrupos(data.horarios[0]?.bloquear_grupos !== false);
+    }
   }, [data]);
 
   const handleToggle = (idx) => {
@@ -326,7 +330,7 @@ function HorarioSection() {
   const handleSalvar = async () => {
     setSalvando(true);
     try {
-      await api.put('/api/whatsapp/horario', { horarios });
+      await api.put('/api/whatsapp/horario', { horarios, bloquear_grupos: bloquearGrupos });
       queryClient.invalidateQueries({ queryKey: ['horario-config'] });
       toast.success('Horário salvo!');
     } catch (e) { toast.error(e.message); }
@@ -380,7 +384,21 @@ function HorarioSection() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between mt-5">
+          {/* Opção: bloquear grupos */}
+          <div className="flex items-center justify-between mt-5 p-4 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border)]">
+            <div>
+              <p className="text-sm font-medium">Bloquear resposta automática em grupos</p>
+              <p className="text-2xs text-[var(--color-text-muted)]">Quando ativo, não envia mensagem fora do horário em conversas de grupo</p>
+            </div>
+            <button onClick={() => setBloquearGrupos(!bloquearGrupos)}
+              className={cn('w-10 h-6 rounded-full transition-colors relative shrink-0',
+                bloquearGrupos ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600')}>
+              <span className={cn('absolute top-1 w-4 h-4 rounded-full bg-white transition-all',
+                bloquearGrupos ? 'left-5' : 'left-1')} />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mt-4">
             <p className="text-2xs text-[var(--color-text-muted)]">
               Fora do horário, o sistema responde automaticamente com IA e informa que o atendimento retorna no próximo dia útil.
             </p>
