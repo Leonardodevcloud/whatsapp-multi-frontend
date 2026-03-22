@@ -25,7 +25,6 @@ const NAV_ITEMS = [
 ];
 
 const NAV_ADMIN = [
-  { to: '/users', icone: Users, label: 'Atendentes' },
   { to: '/supervision', icone: Eye, label: 'Supervisão' },
   { to: '/ia-config', icone: Sparkles, label: 'IA' },
   { to: '/settings', icone: Settings, label: 'Config' },
