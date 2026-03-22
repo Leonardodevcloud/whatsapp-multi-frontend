@@ -86,7 +86,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [menuAnexo, setMenuAnexo] = useState(false);
   const [modalContato, setModalContato] = useState(false);
   const [contatoNome, setContatoNome] = useState('');
-  const [contatoTelefone, setContatoTelefone] = useState('');
   const [digitando, setDigitando] = useState(null);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
   const [melhorandoTexto, setMelhorandoTexto] = useState(false);
@@ -1344,51 +1343,36 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       )}
 
       {/* Modal confirmar puxar chamado */}
-      {/* Modal enviar contato (vCard) */}
+      {/* Modal enviar contato (vCard) — busca contatos do banco */}
       {modalContato && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setModalContato(false)}>
-          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                <UserPlus className="w-6 h-6 text-primary" />
+          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 max-h-[500px] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--color-border)]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Enviar contato</h3>
+                <button onClick={() => setModalContato(false)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X className="w-4 h-4" /></button>
               </div>
-              <h3 className="text-sm font-semibold">Enviar contato</h3>
-            </div>
-            <div className="space-y-3 mb-4">
               <input
                 value={contatoNome}
                 onChange={(e) => setContatoNome(e.target.value)}
-                placeholder="Nome do contato"
+                placeholder="Buscar por nome ou número..."
                 className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
                 autoFocus
               />
-              <input
-                value={contatoTelefone}
-                onChange={(e) => setContatoTelefone(e.target.value)}
-                placeholder="Telefone (ex: 5571999999999)"
-                className="w-full bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
-                onKeyDown={(e) => { if (e.key === 'Enter' && contatoNome.trim() && contatoTelefone.trim()) {
-                  api.post('/api/whatsapp/enviar-contato', { ticket_id: ticketAtivo.id, contact_name: contatoNome.trim(), contact_phone: contatoTelefone.trim() })
-                    .then(() => { toast.success('Contato enviado'); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
-                    .catch((err) => toast.error(err.message || 'Erro'));
-                }}}
-              />
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setModalContato(false)}
-                className="flex-1 h-9 rounded-lg border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-surface-elevated)]">
-                Cancelar
-              </button>
-              <button
-                disabled={!contatoNome.trim() || !contatoTelefone.trim()}
-                onClick={() => {
-                  api.post('/api/whatsapp/enviar-contato', { ticket_id: ticketAtivo.id, contact_name: contatoNome.trim(), contact_phone: contatoTelefone.trim() })
-                    .then(() => { toast.success('Contato enviado'); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
+            <div className="flex-1 overflow-y-auto">
+              <ContatosBusca
+                termo={contatoNome}
+                onSelecionar={(c) => {
+                  api.post('/api/whatsapp/enviar-contato', {
+                    ticket_id: ticketAtivo.id,
+                    contact_name: c.nome || c.telefone,
+                    contact_phone: c.telefone,
+                  })
+                    .then(() => { toast.success(`Contato ${c.nome || c.telefone} enviado`); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
                     .catch((err) => toast.error(err.message || 'Erro'));
                 }}
-                className="flex-1 h-9 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
-                Enviar
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -2219,6 +2203,50 @@ function AudioBubble({ corpo, mediaUrl, mensagemId, enviada }) {
           )}
         </button>
       )}
+    </div>
+  );
+}
+
+// Componente busca de contatos para enviar vCard
+function ContatosBusca({ termo, onSelecionar }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['contatos-busca-vcard', termo],
+    queryFn: () => api.get(`/api/contacts?busca=${encodeURIComponent(termo)}&limite=20`),
+    enabled: termo.length >= 1,
+    staleTime: 5000,
+  });
+
+  const contatos = data?.contatos || data?.rows || data || [];
+  const lista = Array.isArray(contatos) ? contatos : [];
+
+  if (termo.length < 1) {
+    return <p className="text-center text-xs text-[var(--color-text-muted)] py-8">Digite para buscar contatos...</p>;
+  }
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  }
+
+  if (lista.length === 0) {
+    return <p className="text-center text-xs text-[var(--color-text-muted)] py-8">Nenhum contato encontrado</p>;
+  }
+
+  return (
+    <div className="divide-y divide-[var(--color-border)]">
+      {lista.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => onSelecionar(c)}
+          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-surface-elevated)] transition-colors text-left"
+        >
+          <Avatar nome={c.nome} src={c.avatar_url} size="sm" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[var(--color-text)] truncate">{c.nome || 'Sem nome'}</p>
+            <p className="text-2xs text-[var(--color-text-muted)]">{c.telefone}</p>
+          </div>
+          <UserPlus className="w-4 h-4 text-primary shrink-0" />
+        </button>
+      ))}
     </div>
   );
 }
