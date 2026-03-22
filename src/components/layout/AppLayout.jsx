@@ -8,11 +8,13 @@ import { Avatar } from '../ui';
 import {
   MessageSquare, Users, Inbox, BarChart3, Settings, LogOut,
   Sun, Moon, BookOpen, Tag, Wifi, WifiOff, Eye, Sparkles,
+  Camera, X, Lock, User,
 } from 'lucide-react';
 import { SynapseIconSolid } from '../ui/SynapseLogo';
 import { cn } from '../../lib/utils';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import api from '../../lib/api';
+import toast from 'react-hot-toast';
 import wsClient from '../../lib/websocket';
 import GlobalSearch from './GlobalSearch';
 
@@ -36,6 +38,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const [waStatus, setWaStatus] = useState(null);
   const [wsStatus, setWsStatus] = useState('desconectado');
+  const [perfilAberto, setPerfilAberto] = useState(false);
 
   useEffect(() => {
     const verificar = async () => {
@@ -171,10 +174,16 @@ export default function AppLayout() {
             <LogOut className="w-4 h-4" />
           </button>
 
-          {/* Avatar */}
-          <Avatar nome={usuario?.nome} src={usuario?.avatar_url} size="sm" online className="ml-1" />
+          {/* Avatar — clicável abre perfil */}
+          <button onClick={() => setPerfilAberto(true)} className="ml-1 relative group">
+            <Avatar nome={usuario?.nome} src={usuario?.avatar_url} size="sm" online />
+            <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/10 transition-colors" />
+          </button>
         </div>
       </header>
+
+      {/* Modal Perfil */}
+      {perfilAberto && <PerfilModal usuario={usuario} onFechar={() => setPerfilAberto(false)} />}
 
       {/* Banner de reconexão — aparece quando WS está offline */}
       {wsStatus !== 'conectado' && (
@@ -196,5 +205,118 @@ export default function AppLayout() {
       {/* Busca global (Ctrl+K) */}
       <GlobalSearch />
     </div>
+  );
+}
+
+function PerfilModal({ usuario, onFechar }) {
+  const [nome, setNome] = useState(usuario?.nome || '');
+  const [senha, setSenha] = useState('');
+  const [senhaConfirm, setSenhaConfirm] = useState('');
+  const [preview, setPreview] = useState(usuario?.avatar_url || '');
+  const [avatarBase64, setAvatarBase64] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const fileRef = useRef(null);
+  const { verificarSessao } = useAuthStore();
+
+  const handleFoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Máximo 5MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPreview(reader.result);
+      setAvatarBase64(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSalvar = async () => {
+    if (senha && senha.length < 8) { toast.error('Senha mínima 8 caracteres'); return; }
+    if (senha && senha !== senhaConfirm) { toast.error('Senhas não conferem'); return; }
+
+    setSalvando(true);
+    try {
+      const body = {};
+      if (nome.trim() !== usuario?.nome) body.nome = nome.trim();
+      if (senha) body.senha = senha;
+      if (avatarBase64) body.avatar_base64 = avatarBase64;
+
+      if (Object.keys(body).length === 0) { toast('Nenhuma alteração'); setSalvando(false); return; }
+
+      await api.patch('/api/auth/me', body);
+      toast.success('Perfil atualizado!');
+      await verificarSessao();
+      onFechar();
+    } catch (err) { toast.error(err.message || 'Erro ao salvar'); }
+    setSalvando(false);
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-50" onClick={onFechar} />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold">Meu perfil</h2>
+          <button onClick={onFechar} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Avatar */}
+        <div className="flex justify-center mb-5">
+          <div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
+            {preview ? (
+              <img src={preview} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-[var(--color-border)]" />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center border-2 border-[var(--color-border)]">
+                <span className="text-2xl font-semibold text-primary">{nome?.charAt(0)?.toUpperCase()}</span>
+              </div>
+            )}
+            <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <Camera className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFoto} />
+          </div>
+        </div>
+
+        {/* Nome */}
+        <div className="mb-3">
+          <label className="text-2xs text-[var(--color-text-muted)] font-medium mb-1 block">Nome</label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Seu nome"
+              className="w-full h-10 pl-10 pr-3 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        </div>
+
+        {/* Email (readonly) */}
+        <div className="mb-3">
+          <label className="text-2xs text-[var(--color-text-muted)] font-medium mb-1 block">Email</label>
+          <input value={usuario?.email || ''} readOnly
+            className="w-full h-10 px-3 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm opacity-50 cursor-not-allowed" />
+        </div>
+
+        {/* Senha */}
+        <div className="mb-3">
+          <label className="text-2xs text-[var(--color-text-muted)] font-medium mb-1 block">Nova senha (opcional)</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" />
+            <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="Mínimo 8 caracteres"
+              className="w-full h-10 pl-10 pr-3 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        </div>
+
+        {senha && (
+          <div className="mb-3">
+            <label className="text-2xs text-[var(--color-text-muted)] font-medium mb-1 block">Confirmar senha</label>
+            <input type="password" value={senhaConfirm} onChange={(e) => setSenhaConfirm(e.target.value)} placeholder="Repetir senha"
+              className="w-full h-10 px-3 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        )}
+
+        <button onClick={handleSalvar} disabled={salvando}
+          className="w-full h-10 mt-2 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
+          {salvando ? 'Salvando...' : 'Salvar alterações'}
+        </button>
+      </div>
+    </>
   );
 }

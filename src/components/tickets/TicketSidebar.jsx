@@ -482,7 +482,16 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
         </div>
 
         {mostrarAtendente && ticket.atendente_nome && (
-          <p className="text-2xs text-primary mt-1 truncate">👤 {ticket.atendente_nome}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            {ticket.atendente_avatar ? (
+              <img src={ticket.atendente_avatar} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />
+            ) : (
+              <div className="w-3.5 h-3.5 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-primary" style={{ fontSize: '6px', fontWeight: 600 }}>{ticket.atendente_nome?.charAt(0)}</span>
+              </div>
+            )}
+            <span className="text-2xs text-primary truncate">{ticket.atendente_nome}</span>
+          </div>
         )}
       </div>
     </button>
