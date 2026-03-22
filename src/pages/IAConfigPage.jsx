@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Brain, BookOpen, MessageSquare, Tag, Plus, Trash2, Check, X, Edit3,
   RefreshCw, Sparkles, ChevronDown, ChevronUp, ToggleLeft, ToggleRight,
-  AlertCircle, CheckCircle2, Clock, Zap,
+  AlertCircle, CheckCircle2, Clock, Zap, Bot, Shield, Send, Phone,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import api from '../lib/api';
@@ -377,6 +377,155 @@ function TabTagsRegras() {
 // ============================================================
 // MAIN PAGE
 // ============================================================
+// ============================================================
+// TAB: AUTOMAÇÃO — toggles da IA
+// ============================================================
+function TabAutomacao() {
+  const qc = useQueryClient();
+  const { data: config, isLoading } = useQuery({
+    queryKey: ['ia-config'],
+    queryFn: () => api.get('/api/ia/config'),
+  });
+
+  const [salvando, setSalvando] = useState(null);
+
+  const toggle = async (chave, valorAtual) => {
+    setSalvando(chave);
+    try {
+      const novoValor = valorAtual === 'true' ? 'false' : 'true';
+      await api.put('/api/ia/config', { chave, valor: novoValor });
+      qc.invalidateQueries({ queryKey: ['ia-config'] });
+      toast.success('Configuração salva');
+    } catch (err) { toast.error(err.message || 'Erro'); }
+    setSalvando(null);
+  };
+
+  const salvarTexto = async (chave, valor) => {
+    try {
+      await api.put('/api/ia/config', { chave, valor });
+      qc.invalidateQueries({ queryKey: ['ia-config'] });
+      toast.success('Salvo');
+    } catch (err) { toast.error(err.message || 'Erro'); }
+  };
+
+  if (isLoading) return <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-[var(--color-surface-elevated)] animate-pulse" />)}</div>;
+
+  const c = config || {};
+
+  return (
+    <div className="space-y-4">
+      {/* Resposta automática inteligente */}
+      <ToggleCard
+        icone={Bot}
+        cor="text-primary"
+        titulo="Resposta automática inteligente"
+        descricao="Quando a IA tem 90%+ de confiança na resposta (baseada na base de conhecimento), responde automaticamente ao contato. O chamado continua aberto para o atendente revisar."
+        ativo={c.auto_resposta_ativa === 'true'}
+        salvando={salvando === 'auto_resposta_ativa'}
+        onToggle={() => toggle('auto_resposta_ativa', c.auto_resposta_ativa)}
+      />
+
+      {/* Resposta automática em grupos */}
+      <ToggleCard
+        icone={MessageSquare}
+        cor="text-blue-500"
+        titulo="Resposta automática em grupos"
+        descricao="Permitir que a resposta automática funcione também em conversas de grupo. Se desativado, a IA só responde em conversas individuais."
+        ativo={c.auto_resposta_grupos === 'true'}
+        salvando={salvando === 'auto_resposta_grupos'}
+        onToggle={() => toggle('auto_resposta_grupos', c.auto_resposta_grupos)}
+        desabilitado={c.auto_resposta_ativa !== 'true'}
+      />
+
+      {/* Detecção de urgência */}
+      <ToggleCard
+        icone={Shield}
+        cor="text-red-500"
+        titulo="Detecção de urgência"
+        descricao="Analisa cada mensagem recebida por palavras de urgência (emergência, travou, processo, etc). Se detectar, marca o chamado como prioridade alta e notifica os supervisores."
+        ativo={c.detectar_urgencia === 'true'}
+        salvando={salvando === 'detectar_urgencia'}
+        onToggle={() => toggle('detectar_urgencia', c.detectar_urgencia)}
+      />
+
+      {/* Resumo diário */}
+      <ToggleCard
+        icone={Send}
+        cor="text-emerald-500"
+        titulo="Resumo diário da operação"
+        descricao="Todo dia às 19h, envia um resumo automático da operação (chamados, resolvidos, pendentes, tempos, ranking de atendentes) via WhatsApp para o número configurado abaixo."
+        ativo={c.resumo_diario === 'true'}
+        salvando={salvando === 'resumo_diario'}
+        onToggle={() => toggle('resumo_diario', c.resumo_diario)}
+      />
+
+      {/* Telefone do resumo */}
+      {c.resumo_diario === 'true' && (
+        <TelefoneResumo
+          valor={c.resumo_diario_telefone || ''}
+          onSalvar={(v) => salvarTexto('resumo_diario_telefone', v)}
+        />
+      )}
+
+      {/* Info */}
+      <div className="p-4 rounded-xl bg-[var(--color-surface-elevated)] border border-dashed border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+          <strong className="text-[var(--color-text-secondary)]">Como funciona:</strong> A resposta automática usa a base de conhecimento cadastrada na aba "Conhecimento" para responder.
+          Quanto mais perguntas e respostas cadastradas, melhor a IA responde. A detecção de urgência usa palavras-chave fixas e não requer configuração adicional.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ToggleCard({ icone: Icone, cor, titulo, descricao, ativo, salvando, onToggle, desabilitado }) {
+  return (
+    <div className={cn(
+      'flex items-start gap-4 p-5 rounded-xl border transition-all',
+      ativo ? 'bg-[var(--color-surface)] border-primary/30' : 'bg-[var(--color-surface)] border-[var(--color-border)]',
+      desabilitado && 'opacity-40 pointer-events-none'
+    )}>
+      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', ativo ? 'bg-primary/10' : 'bg-[var(--color-surface-elevated)]')}>
+        <Icone className={cn('w-5 h-5', ativo ? cor : 'text-[var(--color-text-muted)]')} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">{titulo}</h3>
+          {ativo && <span className="text-2xs px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 font-medium">Ativo</span>}
+        </div>
+        <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">{descricao}</p>
+      </div>
+      <button onClick={onToggle} disabled={salvando}
+        className={cn('w-12 h-7 rounded-full transition-colors relative shrink-0 mt-1',
+          ativo ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600',
+          salvando && 'opacity-50')}>
+        <span className={cn('absolute top-1 w-5 h-5 rounded-full bg-white transition-all shadow-sm',
+          ativo ? 'left-6' : 'left-1')} />
+      </button>
+    </div>
+  );
+}
+
+function TelefoneResumo({ valor, onSalvar }) {
+  const [tel, setTel] = useState(valor);
+
+  return (
+    <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+      <Phone className="w-4 h-4 text-emerald-500 shrink-0" />
+      <div className="flex-1">
+        <label className="text-2xs text-[var(--color-text-muted)] font-medium block mb-1">Número/grupo para resumo diário</label>
+        <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="5571999999999 ou ID do grupo"
+          className="w-full h-9 px-3 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+      </div>
+      <button onClick={() => onSalvar(tel)} disabled={tel === valor}
+        className={cn('h-9 px-4 rounded-lg text-xs font-medium transition-all',
+          tel !== valor ? 'bg-primary text-white hover:bg-primary/90' : 'bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]')}>
+        Salvar
+      </button>
+    </div>
+  );
+}
+
 export default function IAConfigPage() {
   const [tab, setTab] = useState('instrucoes');
   const { data: stats } = useQuery({ queryKey: ['ia-stats'], queryFn: () => api.get('/api/ia/stats'), refetchInterval: 30000 });
@@ -386,6 +535,7 @@ export default function IAConfigPage() {
     { k: 'conhecimento', l: 'Conhecimento', icon: BookOpen, desc: 'FAQ e info' },
     { k: 'exemplos', l: 'Exemplos', icon: MessageSquare, desc: 'Aprendidos' },
     { k: 'tags', l: 'Tags', icon: Tag, desc: 'Classificação' },
+    { k: 'automacao', l: 'Automação', icon: Bot, desc: 'Auto-reply' },
   ];
 
   return (
@@ -435,6 +585,7 @@ export default function IAConfigPage() {
         {tab === 'conhecimento' && <TabConhecimento />}
         {tab === 'exemplos' && <TabExemplos />}
         {tab === 'tags' && <TabTagsRegras />}
+        {tab === 'automacao' && <TabAutomacao />}
       </div>
     </div>
   );
