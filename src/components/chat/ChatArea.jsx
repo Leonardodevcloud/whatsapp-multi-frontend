@@ -108,8 +108,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [termoBusca, setTermoBusca] = useState('');
   const [resultadosBusca, setResultadosBusca] = useState([]);
   const [indiceBusca, setIndiceBusca] = useState(0);
-  // Edit
-  const [editando, setEditando] = useState(null);
 
   const chatRef = useRef(null);
   const inputRef = useRef(null);
@@ -426,28 +424,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     onError: (err) => toast.error(err.message),
   });
 
-  // Editar mensagem
-  const editarMutation = useMutation({
-    mutationFn: async ({ mensagemId, novoTexto }) => {
-      return api.put('/api/whatsapp/editar-mensagem', { mensagem_id: mensagemId, novo_texto: novoTexto });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
-      toast.success('Mensagem editada');
-      setEditando(null);
-    },
-    onError: (err) => toast.error(err.message || 'Erro ao editar'),
-  });
-
   const handleEnviar = () => {
     if (!texto.trim() || !ticketAtivo) return;
-
-    // Modo edição
-    if (editando) {
-      editarMutation.mutate({ mensagemId: editando.id, novoTexto: texto.trim() });
-      setTexto('');
-      return;
-    }
 
     const outroAtendente = ticketAtivo.usuario_id && ticketAtivo.usuario_id !== usuario?.id && ticketAtivo.status === 'aberto';
     if (outroAtendente) {
@@ -668,7 +646,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       if (e.key === 'Escape') { setQuickReplyAberto(false); return; }
     }
     if (e.key === 'Escape') {
-      if (editando) { setEditando(null); setTexto(''); return; }
       if (replyTo) { setReplyTo(null); return; }
       if (buscaChatAberta) { setBuscaChatAberta(false); setTermoBusca(''); setResultadosBusca([]); return; }
     }
@@ -964,13 +941,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                     onIniciarEncaminhar={() => { setModoEncaminhar(true); setMsgsSelecionadas(new Set([msg.id])); }}
                     onFavoritarSticker={handleFavoritarSticker}
                     favoritosUrls={favoritosUrls}
-                    onReply={(m) => { setReplyTo(m); setEditando(null); inputRef.current?.focus(); }}
-                    onEditar={(m) => {
-                      const diffMin = (Date.now() - new Date(m.criado_em).getTime()) / 60000;
-                      if (diffMin > 15) { toast.error('Só é possível editar dentro de 15 minutos'); return; }
-                      setEditando(m); setReplyTo(null); setTexto(m.corpo);
-                      inputRef.current?.focus();
-                    }}
+                    onReply={(m) => { setReplyTo(m); inputRef.current?.focus(); }}
                     buscaTermo={buscaChatAberta ? termoBusca : null}
                   />
                 </div>
@@ -1162,26 +1133,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         ) : (
           <>
           {/* Reply bar — mostra mensagem sendo respondida */}
-          {replyTo && !editando && (
+          {replyTo && (
             <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border-l-2 border-primary rounded-t-lg mx-2 mb-0">
               <div className="flex-1 min-w-0">
                 <p className="text-2xs font-medium text-primary">{replyTo.is_from_me ? 'Você' : (replyTo.contato_nome || replyTo.nome_participante || 'Contato')}</p>
                 <p className="text-xs text-[var(--color-text-secondary)] truncate">{replyTo.corpo || '📎 Mídia'}</p>
               </div>
               <button onClick={() => setReplyTo(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] shrink-0">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {/* Edit indicator */}
-          {editando && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-l-2 border-amber-500 rounded-t-lg mx-2 mb-0">
-              <div className="flex-1 min-w-0">
-                <p className="text-2xs font-medium text-amber-600">Editando mensagem</p>
-                <p className="text-xs text-[var(--color-text-secondary)] truncate">{editando.corpo}</p>
-              </div>
-              <button onClick={() => { setEditando(null); setTexto(''); }} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] shrink-0">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1527,7 +1485,7 @@ function Lightbox({ url, tipo, onFechar }) {
 }
 
 // ============ CHAT BUBBLE — com fix menu encaminhar (item 2) + sticker favoritar (item 6) ============
-function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, onEditar, buscaTermo }) {
+function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, buscaTermo }) {
   const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada, quoted_corpo, quoted_tipo, quoted_message_id } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
@@ -1626,13 +1584,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
                 className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
                 <ArrowRightLeft className="w-3.5 h-3.5" /> Encaminhar
               </button>
-              {/* Editar — só enviadas, tipo texto, dentro de 15min */}
-              {enviada && !deletada && tipo === 'texto' && ((Date.now() - new Date(criado_em).getTime()) / 60000) < 15 && (
-                <button onClick={() => { if (onEditar) onEditar(mensagem); setMenuAberto(false); }}
-                  className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Editar
-                </button>
-              )}
+              {/* Apagar — só enviadas */}
               {enviada && !deletada && (
                 <button onClick={handleDeletar}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2.5 text-red-500 transition-colors">
