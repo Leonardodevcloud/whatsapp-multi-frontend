@@ -376,7 +376,17 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         return { ...old, mensagens: old.mensagens.map((m) => m.id === dados.mensagemId ? { ...m, reacao: dados.reacao } : m) };
       });
     });
-    return () => { c1(); c2(); c3(); c4(); c5(); };
+    const c6 = wsClient.on('mensagem:editada', (dados) => {
+      if (dados.ticketId == ticketId || dados.ticket_id == ticketId) {
+        queryClient.setQueryData(['mensagens', ticketId], (old) => {
+          if (!old?.mensagens) return old;
+          return { ...old, mensagens: old.mensagens.map((m) =>
+            m.id === dados.mensagemId ? { ...m, corpo: dados.novoCorpo, atualizado_em: new Date().toISOString() } : m
+          ) };
+        });
+      }
+    });
+    return () => { c1(); c2(); c3(); c4(); c5(); c6(); };
   }, [ticketAtivo?.id]);
 
   // Enviar texto — OPTIMISTIC UPDATE (com quote/reply)
@@ -436,7 +446,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData(queryKey, (old) => {
         if (!old?.mensagens) return old;
-        return { ...old, mensagens: old.mensagens.map(m => m.id === mensagemId ? { ...m, corpo: novoTexto } : m) };
+        return { ...old, mensagens: old.mensagens.map(m => m.id === mensagemId ? { ...m, corpo: novoTexto, atualizado_em: new Date().toISOString() } : m) };
       });
     },
     onSuccess: () => {
@@ -1538,7 +1548,7 @@ function Lightbox({ url, tipo, onFechar }) {
 
 // ============ CHAT BUBBLE — com fix menu encaminhar (item 2) + sticker favoritar (item 6) ============
 function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, onEditar, buscaTermo }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada, quoted_corpo, quoted_tipo, quoted_message_id } = mensagem;
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada, quoted_corpo, quoted_tipo, quoted_message_id, atualizado_em } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
   const [reacaoAberta, setReacaoAberta] = useState(false);
@@ -1705,6 +1715,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
           )}
 
           <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
+            {atualizado_em && <span className="text-2xs italic opacity-70">editada</span>}
             <span className="text-2xs">{formatarDataMensagem(criado_em)}</span>
             {enviada && <StatusIcon status={status_envio} />}
           </div>
