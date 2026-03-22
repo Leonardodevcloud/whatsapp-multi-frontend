@@ -887,6 +887,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
               {digitando?.acao === 'composing' ? <span className="text-green-500 animate-pulse">digitando...</span>
                 : digitando?.acao === 'recording' ? <span className="text-red-500 animate-pulse">gravando áudio...</span>
                 : `#${ticketAtivo.protocolo}`}
+              {ticketAtivo.prioridade === 'alta' && (
+                <span className="px-1.5 py-0.5 rounded text-2xs font-bold bg-red-500/15 text-red-500 animate-pulse">URGENTE</span>
+              )}
               {ticketAtivo.assunto && (
                 <span className="px-1.5 py-0.5 rounded text-2xs font-medium" style={{ backgroundColor: (ticketAtivo.assunto_cor || '#7c3aed') + '1a', color: ticketAtivo.assunto_cor || '#7c3aed' }}>{ticketAtivo.assunto}</span>
               )}

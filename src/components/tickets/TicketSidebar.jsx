@@ -72,10 +72,20 @@ export default function TicketSidebar() {
       invalidarListas();
     });
 
+    // Ticket urgente detectado
+    const cleanupUrgente = wsClient.on('ticket:urgente', (data) => {
+      invalidarListas();
+      toast('🚨 Chamado urgente detectado!', {
+        duration: 6000,
+        style: { background: '#fef2f2', color: '#dc2626', fontWeight: 600, border: '1px solid #fecaca' },
+      });
+    });
+
     return () => {
       cleanupMsg();
       cleanupTicket();
       cleanupAtualizado();
+      cleanupUrgente();
     };
   }, [queryClient]);
 
@@ -427,23 +437,30 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
         'w-full text-left px-3 py-2.5 flex items-start gap-3 transition-all duration-100 border-l-3',
         ativo
           ? 'bg-primary/8 border-l-primary'
-          : naoLidas > 0
-            ? 'border-l-primary/60 bg-primary/3 hover:bg-primary/6'
-            : 'border-l-transparent hover:bg-[var(--color-surface-elevated)] dark:hover:bg-surface-dark-elevated'
+          : ticket.prioridade === 'alta'
+            ? 'border-l-red-500 bg-red-500/5 hover:bg-red-500/10'
+            : naoLidas > 0
+              ? 'border-l-primary/60 bg-primary/3 hover:bg-primary/6'
+              : 'border-l-transparent hover:bg-[var(--color-surface-elevated)] dark:hover:bg-surface-dark-elevated'
       )}
     >
       <Avatar nome={ticket.contato_nome} src={ticket.contato_avatar} size="md" />
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'text-sm truncate',
-              naoLidas > 0 ? 'font-bold text-[var(--color-text)]' : 'font-medium text-[var(--color-text)]'
+          <div className="flex items-center gap-1.5 min-w-0">
+            {ticket.prioridade === 'alta' && (
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" title="Urgente" />
             )}
-          >
-            {ticket.contato_nome || ticket.contato_telefone}
-          </span>
+            <span
+              className={cn(
+                'text-sm truncate',
+                naoLidas > 0 ? 'font-bold text-[var(--color-text)]' : 'font-medium text-[var(--color-text)]'
+              )}
+            >
+              {ticket.contato_nome || ticket.contato_telefone}
+            </span>
+          </div>
           <span className="text-2xs text-[var(--color-text-muted)] shrink-0">
             {formatarDataTicket(ticket.ultima_mensagem_em || ticket.criado_em)}
           </span>
