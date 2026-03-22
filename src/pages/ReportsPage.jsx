@@ -31,6 +31,16 @@ const tooltipStyle = {
 export default function ReportsPage() {
   const [dias, setDias] = useState(30);
   const [agenteId, setAgenteId] = useState(null);
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [modoCustom, setModoCustom] = useState(false);
+
+  const handlePeriodo = (d) => { setDias(d); setAgenteId(null); setModoCustom(false); setDataInicio(''); setDataFim(''); };
+  const handleCustomDate = () => {
+    if (!dataInicio || !dataFim) return;
+    const diff = Math.ceil((new Date(dataFim) - new Date(dataInicio)) / (1000 * 60 * 60 * 24));
+    if (diff > 0) { setDias(diff); setModoCustom(true); }
+  };
 
   const { data: dashboard, isLoading: loadDash } = useQuery({ queryKey: ['report-dash'], queryFn: () => api.get('/api/reports/dashboard') });
   const { data: volumeDia } = useQuery({ queryKey: ['report-vol-dia', dias], queryFn: () => api.get(`/api/reports/tickets-dia?dias=${dias}`) });
@@ -61,14 +71,28 @@ export default function ReportsPage() {
             <h1 className="text-xl font-display font-semibold">Relatórios</h1>
             <p className="text-sm text-[var(--color-text-muted)]">Visão analítica da operação</p>
           </div>
-          <div className="flex gap-0.5 bg-[var(--color-surface-elevated)] rounded-full p-0.5">
-            {PERIODOS.map(({ label, dias: d }) => (
-              <button key={d} onClick={() => { setDias(d); setAgenteId(null); }}
-                className={cn('px-4 py-1.5 rounded-full text-xs font-medium transition-all',
-                  dias === d ? 'bg-primary text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]')}>
-                {label}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-0.5 bg-[var(--color-surface-elevated)] rounded-full p-0.5">
+              {PERIODOS.map(({ label, dias: d }) => (
+                <button key={d} onClick={() => handlePeriodo(d)}
+                  className={cn('px-4 py-1.5 rounded-full text-xs font-medium transition-all',
+                    dias === d && !modoCustom ? 'bg-primary text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)}
+                className="h-8 px-2 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
+              <span className="text-xs text-[var(--color-text-muted)]">até</span>
+              <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)}
+                className="h-8 px-2 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-xs focus:outline-none focus:ring-1 focus:ring-primary/30" />
+              <button onClick={handleCustomDate} disabled={!dataInicio || !dataFim}
+                className={cn('h-8 px-3 rounded-full text-xs font-medium transition-all',
+                  modoCustom ? 'bg-primary text-white' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)] disabled:opacity-30')}>
+                Filtrar
               </button>
-            ))}
+            </div>
           </div>
         </div>
 
@@ -136,25 +160,25 @@ export default function ReportsPage() {
           </ChartCard>
 
           {/* Picos — termômetro */}
-          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun} help="Mostra os horários com maior volume de chamados. Barras vermelhas = pico, amarelas = moderado, roxas = normal. A linha tracejada verde indica quantos atendentes seriam ideais (1 pra cada 3 chamados/dia).">
+          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun} help="Mostra os horários com maior volume de chamados. Barras coloridas = chamados (vermelho = pico, amarelo = moderado). Linha verde = quantos atendentes operaram naquele horário no período.">
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={(picos || []).filter(p => p.hora >= 7 && p.hora <= 21)}>
                 <XAxis dataKey="hora" tickFormatter={horaFmt} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} dy={8} />
                 <YAxis hide />
-                <Tooltip {...tooltipStyle} formatter={(v, n) => [n === 'tickets_media_dia' ? `${v}/dia` : `${v} recomendado`, n === 'tickets_media_dia' ? 'Chamados' : 'Atendentes']} />
+                <Tooltip {...tooltipStyle} formatter={(v, n) => [n === 'tickets_media_dia' ? `${v}/dia` : `${v} atendentes`, n === 'tickets_media_dia' ? 'Chamados' : 'Atendentes ativos']} />
                 <Bar dataKey="tickets_media_dia" name="Chamados/dia" radius={[6, 6, 6, 6]} barSize={16}>
                   {(picos || []).filter(p => p.hora >= 7 && p.hora <= 21).map((p, i) => (
                     <Cell key={i} fill={p.tickets_media_dia >= picoMax.tickets_media_dia * 0.8 ? '#ef4444' : p.tickets_media_dia >= picoMax.tickets_media_dia * 0.5 ? '#f59e0b' : '#7c3aed'} fillOpacity={0.7} />
                   ))}
                 </Bar>
-                <Line type="monotone" dataKey="atendentes_recomendados" name="Recomendado" stroke="#22c55e" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                <Line type="monotone" dataKey="atendentes_ativos" name="Atendentes ativos" stroke="#22c55e" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
             <div className="flex items-center gap-4 mt-2">
               <LegendDot cor="#ef4444" label="Pico" />
               <LegendDot cor="#f59e0b" label="Moderado" />
               <LegendDot cor="#7c3aed" label="Normal" />
-              <LegendDot cor="#22c55e" label="Recomendado" dashed />
+              <LegendDot cor="#22c55e" label="Atendentes ativos" />
             </div>
           </ChartCard>
         </div>
