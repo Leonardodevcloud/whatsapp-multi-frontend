@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Avatar, Skeleton } from '../components/ui';
 import {
   BarChart3, Clock, Users, TrendingUp, Zap, AlertTriangle,
-  CheckCircle2, Lightbulb, ThermometerSun, Activity,
+  CheckCircle2, Lightbulb, ThermometerSun, Activity, Info,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
@@ -77,18 +77,24 @@ export default function ReportsPage() {
           <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 mb-8">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}</div>
         ) : (
           <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            <KpiCard label="Tickets" valor={d.tickets_hoje || 0} sub="hoje" cor="#7c3aed" />
-            <KpiCard label="Resolvidos" valor={d.resolvidos_hoje || 0} sub="hoje" cor="#22c55e" />
-            <KpiCard label="Pendentes" valor={d.pendentes_total || 0} sub="total" cor="#f59e0b" />
-            <KpiCard label="TPR" valor={fmt(d.tpr_medio_hoje)} sub="média" cor="#3b82f6" />
-            <KpiCard label="Online" valor={d.atendentes_online || 0} sub="agora" cor="#10b981" />
-            <KpiCard label="CSAT" valor={d.csat_medio_hoje || '—'} sub="média" cor="#a855f7" />
+            <KpiCard label="Tickets" valor={d.tickets_hoje || 0} sub="hoje" cor="#7c3aed" help="Total de chamados criados hoje, incluindo pendentes, abertos e resolvidos." />
+            <KpiCard label="Resolvidos" valor={d.resolvidos_hoje || 0} sub="hoje" cor="#22c55e" help="Chamados finalizados pelos atendentes hoje. Quanto maior, melhor a produtividade." />
+            <KpiCard label="Pendentes" valor={d.pendentes_total || 0} sub="total" cor="#f59e0b" help="Chamados aguardando na fila sem atendente. Se alto, pode indicar falta de equipe." />
+            <KpiCard label="TPR" valor={fmt(d.tpr_medio_hoje)} sub="média" cor="#3b82f6" help="Tempo de Primeira Resposta — quanto tempo o contato espera até receber a 1ª resposta de um atendente." />
+            <KpiCard label="Online" valor={d.atendentes_online || 0} sub="agora" cor="#10b981" help="Atendentes conectados ao sistema neste momento." />
+            <KpiCard label="CSAT" valor={d.csat_medio_hoje || '—'} sub="média" cor="#a855f7" help="Customer Satisfaction Score — nota média de satisfação dada pelos contatos ao fechar chamado (1 a 5)." />
           </div>
         )}
 
         {/* Insights IA */}
         {insights?.insights?.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-8">
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <Lightbulb className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-semibold">Insights da IA</h3>
+              <InfoTooltip text="Análises geradas automaticamente pela inteligência artificial com base nos dados do período. Verde = ponto positivo, amarelo = alerta que precisa de atenção, azul = sugestão de melhoria." />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {insights.insights.map((ins, i) => {
               const cores = { positivo: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-100 dark:border-emerald-900', icon: CheckCircle2, iconCor: 'text-emerald-500' }, alerta: { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-100 dark:border-amber-900', icon: AlertTriangle, iconCor: 'text-amber-500' }, sugestao: { bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-100 dark:border-blue-900', icon: Lightbulb, iconCor: 'text-blue-500' } };
               const c = cores[ins.tipo] || cores.sugestao;
@@ -101,13 +107,14 @@ export default function ReportsPage() {
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
         {/* Gráficos principais */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Volume por dia */}
-          <ChartCard titulo="Volume diário">
+          <ChartCard titulo="Volume diário" help="Quantidade de chamados criados por dia no período selecionado. A linha roxa mostra o total e a verde os resolvidos. Ideal pra identificar dias de maior demanda.">
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={(volumeDia || []).map(d => ({ ...d, dia: new Date(d.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }))}>
                 <XAxis dataKey="dia" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} dy={8} />
@@ -130,7 +137,7 @@ export default function ReportsPage() {
           </ChartCard>
 
           {/* Picos — termômetro */}
-          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun}>
+          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun} help="Mostra os horários com maior volume de chamados. Barras vermelhas = pico, amarelas = moderado, roxas = normal. A linha tracejada verde indica quantos atendentes seriam ideais (1 pra cada 3 tickets/dia).">
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={(picos || []).filter(p => p.hora >= 7 && p.hora <= 21)}>
                 <XAxis dataKey="hora" tickFormatter={horaFmt} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} dy={8} />
@@ -155,7 +162,7 @@ export default function ReportsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Tempo resposta */}
-          <ChartCard titulo="Primeira resposta">
+          <ChartCard titulo="Primeira resposta" help="Distribuição do tempo que o contato espera até a 1ª resposta do atendente. Faixas menores (< 1min, 1-5min) indicam agilidade. Acima de 15min pode gerar insatisfação.">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={tempos || []} layout="vertical" barSize={12}>
                 <XAxis type="number" hide />
@@ -167,7 +174,7 @@ export default function ReportsPage() {
           </ChartCard>
 
           {/* 24h */}
-          <ChartCard titulo="Últimas 24 horas">
+          <ChartCard titulo="Últimas 24 horas" help="Volume de chamados hora a hora nas últimas 24h. Roxo = total criados, verde = resolvidos. Útil pra ver a demanda em tempo real e ajustar a escala.">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={(volumeHora || []).map(h => ({ ...h, hora: new Date(h.hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }))} barSize={10}>
                 <XAxis dataKey="hora" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#a1a1aa' }} interval={2} dy={8} />
@@ -201,7 +208,10 @@ export default function ReportsPage() {
         {/* Performance */}
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden mb-8">
           <div className="px-6 py-4">
-            <h3 className="text-sm font-semibold">Performance individual</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">Performance individual</h3>
+              <InfoTooltip text="Métricas de cada atendente no período selecionado. TPR = Tempo de Primeira Resposta, TMA = Tempo Médio de Atendimento, CSAT = nota de satisfação do contato. Clique em 'Ver' para expandir o gráfico diário do atendente." />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -257,11 +267,11 @@ export default function ReportsPage() {
             </div>
 
             <div className="grid grid-cols-5 gap-3 mb-5">
-              <MiniKpi label="Tickets" valor={agente.resumo.tickets_total || 0} />
-              <MiniKpi label="Resolvidos" valor={agente.resumo.resolvidos || 0} />
-              <MiniKpi label="TPR" valor={fmt(agente.resumo.tpr_medio)} />
-              <MiniKpi label="TMA" valor={fmt(agente.resumo.tr_medio)} />
-              <MiniKpi label="CSAT" valor={agente.resumo.csat_medio || '—'} />
+              <MiniKpi label="Tickets" valor={agente.resumo.tickets_total || 0} help="Total de chamados atribuídos a este atendente no período." />
+              <MiniKpi label="Resolvidos" valor={agente.resumo.resolvidos || 0} help="Chamados finalizados por este atendente." />
+              <MiniKpi label="TPR" valor={fmt(agente.resumo.tpr_medio)} help="Tempo médio de primeira resposta deste atendente." />
+              <MiniKpi label="TMA" valor={fmt(agente.resumo.tr_medio)} help="Tempo Médio de Atendimento — do início até a resolução do chamado." />
+              <MiniKpi label="CSAT" valor={agente.resumo.csat_medio || '—'} help="Nota média de satisfação dos contatos atendidos por este operador." />
             </div>
 
             {agente.por_dia?.length > 0 && (
@@ -288,13 +298,32 @@ export default function ReportsPage() {
   );
 }
 
-function ChartCard({ titulo, subtitulo, icone: Icone, children }) {
+function InfoTooltip({ text }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative inline-flex">
+      <button onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)} onClick={() => setShow(!show)}
+        className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors">
+        <Info className="w-3 h-3" />
+      </button>
+      {show && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2.5 rounded-xl bg-[var(--color-text)] text-[var(--color-surface)] text-2xs leading-relaxed shadow-lg z-50 pointer-events-none">
+          {text}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-[var(--color-text)] rotate-45 -mt-1" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChartCard({ titulo, subtitulo, icone: Icone, help, children }) {
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {Icone && <Icone className="w-4 h-4 text-[var(--color-text-muted)]" />}
           <h3 className="text-sm font-semibold">{titulo}</h3>
+          {help && <InfoTooltip text={help} />}
         </div>
         {subtitulo && <span className="text-2xs text-[var(--color-text-muted)]">{subtitulo}</span>}
       </div>
@@ -303,12 +332,13 @@ function ChartCard({ titulo, subtitulo, icone: Icone, children }) {
   );
 }
 
-function KpiCard({ label, valor, sub, cor }) {
+function KpiCard({ label, valor, sub, cor, help }) {
   return (
     <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4">
       <div className="flex items-center gap-2 mb-1">
         <div className="w-1.5 h-1.5 rounded-full" style={{ background: cor }} />
         <span className="text-2xs text-[var(--color-text-muted)] font-medium">{label}</span>
+        {help && <InfoTooltip text={help} />}
       </div>
       <p className="text-2xl font-semibold tracking-tight">{valor}</p>
       {sub && <p className="text-2xs text-[var(--color-text-muted)] mt-0.5">{sub}</p>}
@@ -316,10 +346,13 @@ function KpiCard({ label, valor, sub, cor }) {
   );
 }
 
-function MiniKpi({ label, valor }) {
+function MiniKpi({ label, valor, help }) {
   return (
     <div className="bg-[var(--color-surface-elevated)] rounded-xl p-3 text-center">
-      <p className="text-2xs text-[var(--color-text-muted)]">{label}</p>
+      <div className="flex items-center justify-center gap-1">
+        <p className="text-2xs text-[var(--color-text-muted)]">{label}</p>
+        {help && <InfoTooltip text={help} />}
+      </div>
       <p className="text-lg font-semibold mt-0.5">{valor}</p>
     </div>
   );
