@@ -421,11 +421,12 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         const found = all.find(m => m.id === quotedMessageId);
         quotedCorpo = found?.corpo;
       }
+      const corpoComPrefixo = isNota ? textoEnvio : `*${usuario?.nome || 'Atendente'}:*\n${textoEnvio}`;
       const mensagemTemp = {
         id: `temp_${Date.now()}`,
         ticket_id: ticketAtivo.id,
         usuario_id: usuario?.id,
-        corpo: textoEnvio,
+        corpo: corpoComPrefixo,
         tipo: 'texto',
         is_from_me: true,
         is_internal: isNota,
