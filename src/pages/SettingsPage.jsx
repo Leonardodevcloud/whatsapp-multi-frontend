@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 const ABAS_CONFIG = [
   { id: 'whatsapp', label: 'WhatsApp', icon: Wifi },
   { id: 'atendentes', label: 'Atendentes', icon: Users },
+  { id: 'horario', label: 'Horário', icon: Clock },
   { id: 'motivos', label: 'Motivos', icon: Tag },
 ];
 
@@ -47,6 +48,7 @@ export default function SettingsPage() {
 
         {abaAtiva === 'whatsapp' && <WhatsAppSection />}
         {abaAtiva === 'atendentes' && <AtendentesSection />}
+        {abaAtiva === 'horario' && <HorarioSection />}
         {abaAtiva === 'motivos' && <MotivosSection />}
       </div>
     </div>
@@ -298,6 +300,98 @@ function AtendentesSection() {
 // ============================================================
 // MOTIVOS DE ATENDIMENTO
 // ============================================================
+// ============================================================
+// HORÁRIO DE ATENDIMENTO
+// ============================================================
+const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+function HorarioSection() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['horario-config'], queryFn: () => api.get('/api/whatsapp/horario') });
+  const [horarios, setHorarios] = useState([]);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (data?.horarios) setHorarios(data.horarios);
+  }, [data]);
+
+  const handleToggle = (idx) => {
+    setHorarios(h => h.map((d, i) => i === idx ? { ...d, ativo: !d.ativo } : d));
+  };
+
+  const handleChange = (idx, campo, valor) => {
+    setHorarios(h => h.map((d, i) => i === idx ? { ...d, [campo]: valor } : d));
+  };
+
+  const handleSalvar = async () => {
+    setSalvando(true);
+    try {
+      await api.put('/api/whatsapp/horario', { horarios });
+      queryClient.invalidateQueries({ queryKey: ['horario-config'] });
+      toast.success('Horário salvo!');
+    } catch (e) { toast.error(e.message); }
+    setSalvando(false);
+  };
+
+  return (
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><Clock className="w-5 h-5 text-primary" /></div>
+        <div>
+          <h2 className="text-base font-semibold">Horário de Atendimento</h2>
+          <p className="text-sm text-[var(--color-text-muted)]">Fora do horário, a IA responde automaticamente usando a base de conhecimento</p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 7 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-[var(--color-surface-elevated)] animate-pulse" />)}</div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {horarios.map((d, idx) => (
+              <div key={d.dia_semana} className={cn(
+                'flex items-center gap-4 px-4 py-3 rounded-lg border transition-all',
+                d.ativo ? 'border-[var(--color-border)] bg-[var(--color-surface-elevated)]' : 'border-dashed border-[var(--color-border)] opacity-50'
+              )}>
+                {/* Toggle */}
+                <button onClick={() => handleToggle(idx)}
+                  className={cn('w-10 h-6 rounded-full transition-colors relative shrink-0',
+                    d.ativo ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600')}>
+                  <span className={cn('absolute top-1 w-4 h-4 rounded-full bg-white transition-all',
+                    d.ativo ? 'left-5' : 'left-1')} />
+                </button>
+
+                {/* Dia */}
+                <span className="text-sm font-medium w-20 shrink-0">{DIAS_SEMANA[d.dia_semana]}</span>
+
+                {/* Horários */}
+                {d.ativo ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input type="time" value={d.hora_abertura} onChange={(e) => handleChange(idx, 'hora_abertura', e.target.value)}
+                      className="h-9 px-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                    <span className="text-sm text-[var(--color-text-muted)]">até</span>
+                    <input type="time" value={d.hora_fechamento} onChange={(e) => handleChange(idx, 'hora_fechamento', e.target.value)}
+                      className="h-9 px-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                ) : (
+                  <span className="text-sm text-[var(--color-text-muted)] italic">Fechado</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between mt-5">
+            <p className="text-2xs text-[var(--color-text-muted)]">
+              Fora do horário, o sistema responde automaticamente com IA e informa que o atendimento retorna no próximo dia útil.
+            </p>
+            <Button onClick={handleSalvar} loading={salvando}>Salvar horário</Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MotivosSection() {
   const queryClient = useQueryClient();
   const [novoNome, setNovoNome] = useState('');
