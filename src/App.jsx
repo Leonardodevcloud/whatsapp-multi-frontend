@@ -19,6 +19,7 @@ import UsersPage from './pages/UsersPage';
 import QuickRepliesPage from './pages/QuickRepliesPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
+import SupervisionPage from './pages/SupervisionPage';
 
 import { Skeleton } from './components/ui';
 
@@ -204,6 +205,7 @@ export default function App() {
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/settings/whatsapp" element={<SettingsPage />} />
+                <Route path="/supervision" element={<SupervisionPage />} />
               </Route>
 
               <Route path="/" element={<Navigate to="/tickets" replace />} />

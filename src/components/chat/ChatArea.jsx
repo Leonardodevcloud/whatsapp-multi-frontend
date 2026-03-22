@@ -97,14 +97,26 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [painelRespostas, setPainelRespostas] = useState(false);
   const [confirmaPuxar, setConfirmaPuxar] = useState(false);
   const [textoPendente, setTextoPendente] = useState('');
-  const [midiaPreview, setMidiaPreview] = useState(null); // { url, tipo, nome } — preview local (item 4)
+  const [midiaPreview, setMidiaPreview] = useState(null);
   const [modalFechar, setModalFechar] = useState(false);
   const [motivoSelecionado, setMotivoSelecionado] = useState(null);
+
+  // Reply (quote)
+  const [replyTo, setReplyTo] = useState(null);
+  // Search (Ctrl+F)
+  const [buscaChatAberta, setBuscaChatAberta] = useState(false);
+  const [termoBusca, setTermoBusca] = useState('');
+  const [resultadosBusca, setResultadosBusca] = useState([]);
+  const [indiceBusca, setIndiceBusca] = useState(0);
+  // Edit
+  const [editando, setEditando] = useState(null);
+
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerGravacaoRef = useRef(null);
+  const buscaInputRef = useRef(null);
 
   // ============ PAGINAÇÃO INFINITA ============
   const [msgsAntigas, setMsgsAntigas] = useState([]); // Mensagens carregadas ao scrollar pra cima
@@ -367,15 +379,27 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     return () => { c1(); c2(); c3(); c4(); c5(); };
   }, [ticketAtivo?.id]);
 
-  // Enviar texto — OPTIMISTIC UPDATE
+  // Enviar texto — OPTIMISTIC UPDATE (com quote/reply)
   const enviarMutation = useMutation({
-    mutationFn: async ({ textoEnvio, isNota }) => {
+    mutationFn: async ({ textoEnvio, isNota, quotedMessageId }) => {
       if (isNota) return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoEnvio });
-      return api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: textoEnvio });
+      return api.post('/api/whatsapp/enviar', {
+        ticket_id: ticketAtivo.id,
+        texto: textoEnvio,
+        quoted_message_id: quotedMessageId || undefined,
+      });
     },
-    onMutate: async ({ textoEnvio, isNota }) => {
+    onMutate: async ({ textoEnvio, isNota, quotedMessageId }) => {
       const queryKey = ['mensagens', ticketAtivo.id];
       await queryClient.cancelQueries({ queryKey });
+      // Buscar corpo da mensagem citada pra preview
+      let quotedCorpo = null;
+      if (quotedMessageId) {
+        const msgs = queryClient.getQueryData(queryKey);
+        const all = [...(msgsAntigas || []), ...(msgs?.mensagens || [])];
+        const found = all.find(m => m.id === quotedMessageId);
+        quotedCorpo = found?.corpo;
+      }
       const mensagemTemp = {
         id: `temp_${Date.now()}`,
         ticket_id: ticketAtivo.id,
@@ -387,6 +411,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         status_envio: 'enviada',
         criado_em: new Date().toISOString(),
         usuario_nome: usuario?.nome,
+        quoted_message_id: quotedMessageId || null,
+        quoted_corpo: quotedCorpo,
       };
       queryClient.setQueryData(queryKey, (old) => {
         if (!old) return old;
@@ -400,8 +426,28 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     onError: (err) => toast.error(err.message),
   });
 
+  // Editar mensagem
+  const editarMutation = useMutation({
+    mutationFn: async ({ mensagemId, novoTexto }) => {
+      return api.put('/api/whatsapp/editar-mensagem', { mensagem_id: mensagemId, novo_texto: novoTexto });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      toast.success('Mensagem editada');
+      setEditando(null);
+    },
+    onError: (err) => toast.error(err.message || 'Erro ao editar'),
+  });
+
   const handleEnviar = () => {
     if (!texto.trim() || !ticketAtivo) return;
+
+    // Modo edição
+    if (editando) {
+      editarMutation.mutate({ mensagemId: editando.id, novoTexto: texto.trim() });
+      setTexto('');
+      return;
+    }
 
     const outroAtendente = ticketAtivo.usuario_id && ticketAtivo.usuario_id !== usuario?.id && ticketAtivo.status === 'aberto';
     if (outroAtendente) {
@@ -411,8 +457,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     }
 
     const textoEnvio = texto.trim();
+    const quotedId = replyTo?.id || null;
     setTexto('');
-    enviarMutation.mutate({ textoEnvio, isNota: modoNota });
+    setReplyTo(null);
+    enviarMutation.mutate({ textoEnvio, isNota: modoNota, quotedMessageId: quotedId });
   };
 
   const confirmarPuxarChamado = async () => {
@@ -619,7 +667,54 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selecionarQuickReply(quickRepliesFiltradas[quickReplyIdx]); return; }
       if (e.key === 'Escape') { setQuickReplyAberto(false); return; }
     }
+    if (e.key === 'Escape') {
+      if (editando) { setEditando(null); setTexto(''); return; }
+      if (replyTo) { setReplyTo(null); return; }
+      if (buscaChatAberta) { setBuscaChatAberta(false); setTermoBusca(''); setResultadosBusca([]); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEnviar(); }
+  };
+
+  // Ctrl+F — busca no chat
+  useEffect(() => {
+    const handleGlobal = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && ticketAtivo?.id) {
+        e.preventDefault();
+        setBuscaChatAberta(true);
+        setTimeout(() => buscaInputRef.current?.focus(), 100);
+      }
+    };
+    window.addEventListener('keydown', handleGlobal);
+    return () => window.removeEventListener('keydown', handleGlobal);
+  }, [ticketAtivo?.id]);
+
+  // Executar busca
+  const executarBusca = useCallback(async (termo) => {
+    if (!termo || termo.length < 2 || !ticketAtivo?.id) { setResultadosBusca([]); return; }
+    try {
+      const res = await api.get(`/api/whatsapp/buscar-mensagens/${ticketAtivo.id}?q=${encodeURIComponent(termo)}`);
+      setResultadosBusca(res.resultados || []);
+      setIndiceBusca(0);
+    } catch { setResultadosBusca([]); }
+  }, [ticketAtivo?.id]);
+
+  // Debounce busca
+  useEffect(() => {
+    const timer = setTimeout(() => executarBusca(termoBusca), 400);
+    return () => clearTimeout(timer);
+  }, [termoBusca, executarBusca]);
+
+  // Navegar entre resultados e scroll até a mensagem
+  const irParaResultado = (idx) => {
+    if (!resultadosBusca[idx]) return;
+    setIndiceBusca(idx);
+    const msgId = resultadosBusca[idx].id;
+    const el = document.querySelector(`[data-msg-id="${msgId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-primary', 'ring-offset-1');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-1'), 2000);
+    }
   };
 
   useEffect(() => {
@@ -794,9 +889,37 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       {/* Fechar menu transferir */}
       {menuTransferir && <div className="fixed inset-0 z-40" onClick={() => setMenuTransferir(false)} />}
 
+      {/* Barra de busca no chat — Ctrl+F */}
+      {buscaChatAberta && (
+        <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 flex items-center gap-2">
+          <input
+            ref={buscaInputRef}
+            value={termoBusca}
+            onChange={(e) => setTermoBusca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') irParaResultado(e.shiftKey ? indiceBusca - 1 : indiceBusca + 1);
+              if (e.key === 'Escape') { setBuscaChatAberta(false); setTermoBusca(''); setResultadosBusca([]); }
+            }}
+            placeholder="Buscar no chat..."
+            className="flex-1 bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+          {resultadosBusca.length > 0 && (
+            <span className="text-xs text-[var(--color-text-secondary)] whitespace-nowrap">{indiceBusca + 1}/{resultadosBusca.length}</span>
+          )}
+          <button onClick={() => irParaResultado(indiceBusca - 1)} disabled={indiceBusca <= 0} className="p-1 text-[var(--color-text-muted)] disabled:opacity-30">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button onClick={() => irParaResultado(indiceBusca + 1)} disabled={indiceBusca >= resultadosBusca.length - 1} className="p-1 text-[var(--color-text-muted)] disabled:opacity-30">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button onClick={() => { setBuscaChatAberta(false); setTermoBusca(''); setResultadosBusca([]); }} className="p-1 text-[var(--color-text-muted)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Mensagens */}
       <div ref={chatRef} onScroll={handleScroll} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-3 space-y-1">
-        {/* Loader de mensagens anteriores */}
         {carregandoAnteriores && (
           <div className="flex justify-center py-2">
             <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -824,7 +947,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         ) : (
           <>
             {mensagens.map((msg) => (
-              <div key={msg.id} className={cn('flex items-start gap-2', modoEncaminhar && 'cursor-pointer')} onClick={() => modoEncaminhar && toggleMsgSelecionada(msg.id)}>
+              <div key={msg.id} data-msg-id={msg.id} className={cn('flex items-start gap-2 transition-all', modoEncaminhar && 'cursor-pointer')} onClick={() => modoEncaminhar && toggleMsgSelecionada(msg.id)}>
                 {modoEncaminhar && (
                   <div className="flex items-center pt-2 shrink-0">
                     <div className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all',
@@ -841,6 +964,14 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                     onIniciarEncaminhar={() => { setModoEncaminhar(true); setMsgsSelecionadas(new Set([msg.id])); }}
                     onFavoritarSticker={handleFavoritarSticker}
                     favoritosUrls={favoritosUrls}
+                    onReply={(m) => { setReplyTo(m); setEditando(null); inputRef.current?.focus(); }}
+                    onEditar={(m) => {
+                      const diffMin = (Date.now() - new Date(m.criado_em).getTime()) / 60000;
+                      if (diffMin > 15) { toast.error('Só é possível editar dentro de 15 minutos'); return; }
+                      setEditando(m); setReplyTo(null); setTexto(m.corpo);
+                      inputRef.current?.focus();
+                    }}
+                    buscaTermo={buscaChatAberta ? termoBusca : null}
                   />
                 </div>
               </div>
@@ -1029,6 +1160,33 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             </button>
           </div>
         ) : (
+          <>
+          {/* Reply bar — mostra mensagem sendo respondida */}
+          {replyTo && !editando && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border-l-2 border-primary rounded-t-lg mx-2 mb-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-2xs font-medium text-primary">{replyTo.is_from_me ? 'Você' : (replyTo.contato_nome || replyTo.nome_participante || 'Contato')}</p>
+                <p className="text-xs text-[var(--color-text-secondary)] truncate">{replyTo.corpo || '📎 Mídia'}</p>
+              </div>
+              <button onClick={() => setReplyTo(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Edit indicator */}
+          {editando && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-l-2 border-amber-500 rounded-t-lg mx-2 mb-0">
+              <div className="flex-1 min-w-0">
+                <p className="text-2xs font-medium text-amber-600">Editando mensagem</p>
+                <p className="text-xs text-[var(--color-text-secondary)] truncate">{editando.corpo}</p>
+              </div>
+              <button onClick={() => { setEditando(null); setTexto(''); }} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
             <button onClick={() => setModoNota(!modoNota)} title="Nota interna"
               className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
@@ -1124,6 +1282,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
               </button>
             )}
           </div>
+          </>
         )}
       </div>
       )}
@@ -1368,8 +1527,8 @@ function Lightbox({ url, tipo, onFechar }) {
 }
 
 // ============ CHAT BUBBLE — com fix menu encaminhar (item 2) + sticker favoritar (item 6) ============
-function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls }) {
-  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada } = mensagem;
+function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar, onFavoritarSticker, favoritosUrls, onReply, onEditar, buscaTermo }) {
+  const { is_from_me, is_internal, tipo, corpo, criado_em, status_envio, usuario_nome, contato_nome, media_url, nome_participante, nomeParticipante, deletada, quoted_corpo, quoted_tipo, quoted_message_id } = mensagem;
   const participante = nome_participante || nomeParticipante;
   const [menuAberto, setMenuAberto] = useState(false);
   const [reacaoAberta, setReacaoAberta] = useState(false);
@@ -1458,10 +1617,22 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
             <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
             <div className={cn('absolute top-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl z-50 py-1.5 min-w-[170px]',
               enviada ? 'right-0' : 'left-0')}>
+              {/* Responder */}
+              <button onClick={() => { if (onReply) onReply(mensagem); setMenuAberto(false); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
+                <MessageSquare className="w-3.5 h-3.5" /> Responder
+              </button>
               <button onClick={() => { if (onIniciarEncaminhar) onIniciarEncaminhar(); setMenuAberto(false); }}
                 className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
                 <ArrowRightLeft className="w-3.5 h-3.5" /> Encaminhar
               </button>
+              {/* Editar — só enviadas, tipo texto, dentro de 15min */}
+              {enviada && !deletada && tipo === 'texto' && ((Date.now() - new Date(criado_em).getTime()) / 60000) < 15 && (
+                <button onClick={() => { if (onEditar) onEditar(mensagem); setMenuAberto(false); }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Editar
+                </button>
+              )}
               {enviada && !deletada && (
                 <button onClick={handleDeletar}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2.5 text-red-500 transition-colors">
@@ -1475,6 +1646,16 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
         {/* Bolha */}
         <div className={cn('rounded-2xl overflow-hidden', enviada ? 'bg-primary text-white rounded-br-md' : 'bg-[var(--chat-bubble-received)] text-[var(--chat-bubble-received-text)] rounded-bl-md')}>
           {!enviada && (participante || contato_nome) && <span className="text-2xs font-medium text-primary mb-0.5 block px-4 pt-2">{participante || contato_nome}</span>}
+
+          {/* Quote preview — mensagem citada */}
+          {(quoted_corpo || quoted_message_id) && !deletada && (
+            <div className={cn('mx-2 mt-2 px-3 py-1.5 rounded-lg border-l-2',
+              enviada ? 'bg-white/10 border-white/40' : 'bg-black/5 dark:bg-white/5 border-primary/40')}>
+              <p className={cn('text-2xs truncate', enviada ? 'text-white/70' : 'text-[var(--color-text-secondary)]')}>
+                {quoted_corpo || '📎 Mídia'}
+              </p>
+            </div>
+          )}
 
           {/* Banner mensagem apagada */}
           {deletadaPorContato && (
@@ -1508,6 +1689,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
               mensagemId={mensagem.id}
               onFavoritarSticker={onFavoritarSticker}
               favoritosUrls={favoritosUrls}
+              buscaTermo={buscaTermo}
             />
           )}
 
@@ -1642,7 +1824,7 @@ function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
 }
 
 // ============ MEDIA CONTENT — com fix video (item 3) + sticker favoritar (item 6) ============
-function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, onFavoritarSticker, favoritosUrls }) {
+function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, onFavoritarSticker, favoritosUrls, buscaTermo }) {
   switch (tipo) {
     case 'imagem':
       return (
@@ -1759,23 +1941,85 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
     default:
       return (
         <p className="text-sm whitespace-pre-wrap break-words px-4 pt-2">
-          <Linkify texto={corpo || '📎 Mídia'} enviada={enviada} />
+          <Linkify texto={corpo || '📎 Mídia'} enviada={enviada} buscaTermo={buscaTermo} />
         </p>
       );
   }
 }
 
-// Componente pra tornar links clicáveis
-function Linkify({ texto, enviada }) {
+// Componente pra tornar links clicáveis + highlight de busca
+function Linkify({ texto, enviada, buscaTermo }) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = texto.split(urlRegex);
-  return parts.map((part, i) => {
-    if (urlRegex.test(part)) {
-      urlRegex.lastIndex = 0;
-      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={cn('underline break-all', enviada ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80')}>{part}</a>;
-    }
-    return <span key={i}>{part}</span>;
-  });
+
+  const highlightTexto = (text) => {
+    if (!buscaTermo || buscaTermo.length < 2) return text;
+    const regex = new RegExp(`(${buscaTermo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.split(regex).map((part, i) =>
+      regex.test(part) ? <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 text-inherit rounded-sm px-0.5">{part}</mark> : part
+    );
+  };
+
+  const hasUrl = urlRegex.test(texto);
+  urlRegex.lastIndex = 0;
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (/(https?:\/\/[^\s]+)/.test(part)) {
+          return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={cn('underline break-all', enviada ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80')}>{part}</a>;
+        }
+        return <span key={i}>{highlightTexto(part)}</span>;
+      })}
+      {hasUrl && <LinkPreview texto={texto} enviada={enviada} />}
+    </>
+  );
+}
+
+// Link Preview — Open Graph preview card
+function LinkPreview({ texto, enviada }) {
+  const [preview, setPreview] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    const urlMatch = texto.match(/(https?:\/\/[^\s]+)/);
+    if (!urlMatch) return;
+    const url = urlMatch[1];
+
+    // Cache no sessionStorage
+    const cacheKey = `lp:${url}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) { setPreview(JSON.parse(cached)); return; }
+
+    setCarregando(true);
+    api.get(`/api/whatsapp/link-preview?url=${encodeURIComponent(url)}`)
+      .then((data) => {
+        if (data?.title) {
+          setPreview(data);
+          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCarregando(false));
+  }, [texto]);
+
+  if (!preview || carregando) return null;
+
+  return (
+    <a href={preview.url} target="_blank" rel="noopener noreferrer"
+      className={cn('block mt-1.5 rounded-lg overflow-hidden border', enviada ? 'border-white/20' : 'border-[var(--color-border)]')}>
+      {preview.image && (
+        <img src={preview.image} alt="" className="w-full h-28 object-cover" onError={(e) => e.target.style.display = 'none'} />
+      )}
+      <div className={cn('px-3 py-2', enviada ? 'bg-white/10' : 'bg-[var(--color-surface-elevated)]')}>
+        <p className={cn('text-xs font-medium truncate', enviada ? 'text-white' : 'text-[var(--color-text)]')}>{preview.title}</p>
+        {preview.description && (
+          <p className={cn('text-2xs mt-0.5 line-clamp-2', enviada ? 'text-white/60' : 'text-[var(--color-text-secondary)]')}>{preview.description}</p>
+        )}
+        <p className={cn('text-2xs mt-1', enviada ? 'text-white/40' : 'text-[var(--color-text-muted)]')}>{preview.siteName || new URL(preview.url).hostname}</p>
+      </div>
+    </a>
+  );
 }
 
 function StatusIcon({ status }) {

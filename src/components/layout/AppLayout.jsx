@@ -7,7 +7,7 @@ import { useThemeStore } from '../../stores/themeStore';
 import { Avatar } from '../ui';
 import {
   MessageSquare, Users, Inbox, BarChart3, Settings, LogOut,
-  Sun, Moon, BookOpen, Tag, Wifi, WifiOff,
+  Sun, Moon, BookOpen, Tag, Wifi, WifiOff, Eye,
 } from 'lucide-react';
 import { SynapseIconSolid } from '../ui/SynapseLogo';
 import { cn } from '../../lib/utils';
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
 
 const NAV_ADMIN = [
   { to: '/users', icone: Users, label: 'Atendentes' },
+  { to: '/supervision', icone: Eye, label: 'Supervisão' },
   { to: '/settings', icone: Settings, label: 'Config' },
 ];
 
