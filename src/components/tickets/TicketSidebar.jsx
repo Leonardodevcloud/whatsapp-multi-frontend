@@ -461,11 +461,24 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
             {ticket.ultima_mensagem_preview || 'Sem mensagens'}
           </p>
 
-          {naoLidas > 0 && (
-            <span className="min-w-[20px] h-[20px] rounded-full bg-primary text-white text-2xs font-bold flex items-center justify-center px-1 shrink-0 shadow-sm">
-              {naoLidas > 9 ? '9+' : naoLidas}
-            </span>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {ticket.assunto && (
+              <span
+                className="px-1.5 py-0.5 rounded text-2xs font-medium max-w-[80px] truncate"
+                style={{
+                  backgroundColor: (ticket.assunto_cor || '#7c3aed') + '1a',
+                  color: ticket.assunto_cor || '#7c3aed',
+                }}
+              >
+                {ticket.assunto}
+              </span>
+            )}
+            {naoLidas > 0 && (
+              <span className="min-w-[20px] h-[20px] rounded-full bg-primary text-white text-2xs font-bold flex items-center justify-center px-1 shrink-0 shadow-sm">
+                {naoLidas > 9 ? '9+' : naoLidas}
+              </span>
+            )}
+          </div>
         </div>
 
         {mostrarAtendente && ticket.atendente_nome && (

@@ -872,10 +872,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
           <Avatar nome={ticketAtivo.contato_nome} src={ticketAtivo.contato_avatar} size="md" />
           <div className="min-w-0 text-left">
             <h3 className="text-sm font-semibold truncate">{ticketAtivo.contato_nome || ticketAtivo.contato_telefone}</h3>
-            <p className="text-2xs text-[var(--color-text-muted)]">
+            <p className="text-2xs text-[var(--color-text-muted)] flex items-center gap-1.5">
               {digitando?.acao === 'composing' ? <span className="text-green-500 animate-pulse">digitando...</span>
                 : digitando?.acao === 'recording' ? <span className="text-red-500 animate-pulse">gravando áudio...</span>
                 : `#${ticketAtivo.protocolo}`}
+              {ticketAtivo.assunto && (
+                <span className="px-1.5 py-0.5 rounded text-2xs font-medium" style={{ backgroundColor: (ticketAtivo.assunto_cor || '#7c3aed') + '1a', color: ticketAtivo.assunto_cor || '#7c3aed' }}>{ticketAtivo.assunto}</span>
+              )}
             </p>
           </div>
         </button>
