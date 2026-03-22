@@ -719,6 +719,16 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     return () => window.removeEventListener('keydown', handleGlobal);
   }, [ticketAtivo?.id]);
 
+  // Auto-grow textarea conforme texto muda
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = '40px';
+    if (texto) {
+      el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+    }
+  }, [texto]);
+
   // Executar busca
   const executarBusca = useCallback(async (termo) => {
     if (!termo || termo.length < 2 || !ticketAtivo?.id) { setResultadosBusca([]); return; }
@@ -1290,15 +1300,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
               )}
             </div>
 
-            <textarea ref={inputRef} value={texto} onChange={(e) => {
-                setTexto(e.target.value);
-                // Auto-grow
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-              }} onKeyDown={handleKeyDown}
+            <textarea ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
               rows={1}
-              className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0"
+              className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0 overflow-hidden"
               style={{ minHeight: '40px', maxHeight: '128px' }} />
 
             {/* Botão IA — melhorar texto */}
@@ -1824,7 +1829,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
             />
           )}
 
-          <div className={cn('flex items-center justify-end gap-1 px-4 pb-2', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
+          <div className={cn('flex items-center justify-end gap-1 px-3 pb-1.5', enviada ? 'text-white/60' : 'text-[var(--color-text-muted)]')}>
             {atualizado_em && <span className="text-2xs italic opacity-70">editada</span>}
             <span className="text-2xs">{formatarDataMensagem(criado_em)}</span>
             {enviada && <StatusIcon status={status_envio} />}
@@ -1892,7 +1897,7 @@ function LazyImage({ mediaUrl, corpo, onLightbox, enviada }) {
             onLoad={() => {}}
             onError={() => setErro(true)}
             className={cn(
-              'max-w-full max-h-40 object-cover transition-all duration-300 rounded-lg',
+              'w-full max-h-52 object-cover transition-all duration-300',
               fullCarregada ? '' : 'blur-[3px] scale-105'
             )}
           />
@@ -1950,7 +1955,7 @@ function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
             muted
             preload="metadata"
             onError={() => setErro(true)}
-            className="max-w-full max-h-40 object-cover blur-[3px] scale-105 rounded-lg"
+            className="w-full max-h-52 object-cover blur-[3px] scale-105"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <div className="w-12 h-12 rounded-full flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -1976,7 +1981,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2"><span>📷</span><span className="text-sm opacity-80">Imagem</span></div>
           )}
-          {corpo && corpo !== '📷 Imagem' && <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}
+          {corpo && corpo !== '📷 Imagem' && <p className="text-xs whitespace-pre-wrap break-words px-3 py-1">{corpo}</p>}
         </div>
       );
 
@@ -1992,7 +1997,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
           ) : (
             <div className="px-4 pt-2 flex items-center gap-2"><span>🎥</span><span className="text-sm opacity-80">Vídeo</span></div>
           )}
-          {corpo && corpo !== '🎥 Vídeo' && corpo !== '🎬 Video' && <p className="text-sm whitespace-pre-wrap break-words px-4 pt-1">{corpo}</p>}
+          {corpo && corpo !== '🎥 Vídeo' && corpo !== '🎬 Video' && <p className="text-xs whitespace-pre-wrap break-words px-3 py-1">{corpo}</p>}
         </div>
       );
 
@@ -2096,7 +2101,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
 
     default:
       return (
-        <p className="text-sm whitespace-pre-wrap break-words px-4 pt-2">
+        <p className="text-[13px] leading-[1.4] whitespace-pre-wrap break-words px-3 pt-1.5">
           <Linkify texto={corpo || '📎 Mídia'} enviada={enviada} buscaTermo={buscaTermo} />
         </p>
       );
