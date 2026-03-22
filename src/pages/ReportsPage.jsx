@@ -48,7 +48,6 @@ export default function ReportsPage() {
   const { data: picos } = useQuery({ queryKey: ['report-picos', dias], queryFn: () => api.get(`/api/reports/picos?dias=${dias}`) });
   const { data: performance } = useQuery({ queryKey: ['report-perf', dias], queryFn: () => api.get(`/api/reports/performance?dias=${dias}`) });
   const { data: tempos } = useQuery({ queryKey: ['report-tempos', dias], queryFn: () => api.get(`/api/reports/tempos-resposta?dias=${dias}`) });
-  const { data: filas } = useQuery({ queryKey: ['report-filas'], queryFn: () => api.get('/api/reports/tickets-fila') });
   const { data: insights } = useQuery({ queryKey: ['report-insights', dias], queryFn: () => api.get(`/api/reports/insights?dias=${dias}`), staleTime: 60000 });
   const { data: agente } = useQuery({ queryKey: ['report-agente', agenteId, dias], queryFn: () => api.get(`/api/reports/atendente/${agenteId}?dias=${dias}`), enabled: !!agenteId });
 
@@ -103,7 +102,7 @@ export default function ReportsPage() {
           <div className="grid grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
             <KpiCard label="Chamados" valor={d.tickets_hoje || 0} sub="hoje" cor="#7c3aed" help="Total de chamados criados hoje, incluindo pendentes, abertos e resolvidos." />
             <KpiCard label="Resolvidos" valor={d.resolvidos_hoje || 0} sub="hoje" cor="#22c55e" help="Chamados finalizados pelos atendentes hoje. Quanto maior, melhor a produtividade." />
-            <KpiCard label="Pendentes" valor={d.pendentes_total || 0} sub="total" cor="#f59e0b" help="Chamados aguardando na fila sem atendente. Se alto, pode indicar falta de equipe." />
+            <KpiCard label="Pendentes" valor={d.pendentes_total || 0} sub="total" cor="#f59e0b" help="Chamados aguardando sem atendente. Se alto, pode indicar falta de equipe." />
             <KpiCard label="TPR" valor={fmt(d.tpr_medio_hoje)} sub="média" cor="#3b82f6" help="Tempo de Primeira Resposta — quanto tempo o contato espera até receber a 1ª resposta de um atendente." />
             <KpiCard label="Online" valor={d.atendentes_online || 0} sub="agora" cor="#10b981" help="Atendentes conectados ao sistema neste momento." />
           </div>
@@ -211,23 +210,6 @@ export default function ReportsPage() {
         </div>
 
         {/* Filas */}
-        {filas?.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            {filas.map(f => (
-              <div key={f.nome} className="flex items-center gap-3 p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-                <div className="w-2 h-8 rounded-full" style={{ background: f.cor || '#7c3aed' }} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{f.nome}</p>
-                  <p className="text-2xs text-[var(--color-text-muted)]">{f.total || 0} chamados</p>
-                </div>
-                {parseInt(f.pendentes) > 0 && (
-                  <span className="text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">{f.pendentes}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* Performance */}
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden mb-8">
           <div className="px-6 py-4">

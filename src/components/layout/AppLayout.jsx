@@ -22,7 +22,6 @@ const NAV_ITEMS = [
   { to: '/tickets', icone: MessageSquare, label: 'Chamados' },
   { to: '/contacts', icone: Users, label: 'Contatos' },
   { to: '/quick-replies', icone: BookOpen, label: 'Respostas' },
-  { to: '/queues', icone: Inbox, label: 'Filas' },
   { to: '/reports', icone: BarChart3, label: 'Relatórios' },
 ];
 

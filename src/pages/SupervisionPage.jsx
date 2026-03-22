@@ -61,7 +61,6 @@ export default function SupervisionPage() {
 
   const resumo = dashboard?.resumo || {};
   const atendentes = dashboard?.atendentes || [];
-  const filas = dashboard?.filas || [];
   const chats = chatsData?.chats || [];
 
   const handleAssumir = async (ticketId) => {
@@ -182,11 +181,6 @@ export default function SupervisionPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {chat.fila_nome && (
-                        <span className="px-2 py-0.5 rounded text-2xs font-medium" style={{ background: `${chat.fila_cor}20`, color: chat.fila_cor }}>
-                          {chat.fila_nome}
-                        </span>
-                      )}
                       <span className="text-2xs text-[var(--color-text-muted)]">{chat.total_mensagens} msgs</span>
                     </div>
                   </div>
@@ -227,30 +221,6 @@ export default function SupervisionPage() {
           </div>
         </div>
 
-        {/* Filas */}
-        {filas.length > 0 && (
-          <div className="mt-6 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">
-            <div className="px-4 py-3 border-b border-[var(--color-border)]">
-              <h2 className="text-sm font-semibold text-[var(--color-text)] flex items-center gap-2">
-                <Inbox className="w-4 h-4 text-primary" /> Filas
-              </h2>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
-              {filas.map((f) => (
-                <div key={f.id} className="flex items-center gap-3 p-3 rounded-lg bg-[var(--color-surface-elevated)]">
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ background: f.cor }} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-[var(--color-text)] truncate">{f.nome}</p>
-                    <p className="text-2xs text-[var(--color-text-muted)]">
-                      {f.pendentes > 0 ? `${f.pendentes} pendente(s)` : 'Sem pendentes'}
-                      {f.abertos > 0 && ` · ${f.abertos} aberto(s)`}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
