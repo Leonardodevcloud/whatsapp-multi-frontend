@@ -1368,6 +1368,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                     ticket_id: ticketAtivo.id,
                     contact_name: c.nome || c.telefone,
                     contact_phone: c.telefone,
+                    avatar_url: c.avatar_url || null,
                   })
                     .then(() => { toast.success(`Contato ${c.nome || c.telefone} enviado`); setModalContato(false); queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] }); })
                     .catch((err) => toast.error(err.message || 'Erro'));
@@ -1981,8 +1982,12 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
       return (
         <div className="px-3 pt-2">
           <div className={cn('flex items-center gap-3 p-3 rounded-xl', enviada ? 'bg-white/10' : 'bg-black/5 dark:bg-white/5')}>
-            <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-medium',
-              enviada ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary')}>
+            {mediaUrl ? (
+              <img src={mediaUrl} alt={nomeContato} className="w-10 h-10 rounded-full object-cover shrink-0" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+            ) : null}
+            <div className={cn('w-10 h-10 rounded-full items-center justify-center shrink-0 text-sm font-medium',
+              enviada ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary',
+              mediaUrl ? 'hidden' : 'flex')}>
               {iniciais || '?'}
             </div>
             <div className="min-w-0">
