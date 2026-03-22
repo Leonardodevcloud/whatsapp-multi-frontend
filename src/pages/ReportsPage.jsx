@@ -74,15 +74,14 @@ export default function ReportsPage() {
 
         {/* KPI Cards */}
         {loadDash ? (
-          <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 mb-8">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}</div>
+          <div className="grid grid-cols-3 lg:grid-cols-5 gap-4 mb-8">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}</div>
         ) : (
-          <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            <KpiCard label="Tickets" valor={d.tickets_hoje || 0} sub="hoje" cor="#7c3aed" help="Total de chamados criados hoje, incluindo pendentes, abertos e resolvidos." />
+          <div className="grid grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+            <KpiCard label="Chamados" valor={d.tickets_hoje || 0} sub="hoje" cor="#7c3aed" help="Total de chamados criados hoje, incluindo pendentes, abertos e resolvidos." />
             <KpiCard label="Resolvidos" valor={d.resolvidos_hoje || 0} sub="hoje" cor="#22c55e" help="Chamados finalizados pelos atendentes hoje. Quanto maior, melhor a produtividade." />
             <KpiCard label="Pendentes" valor={d.pendentes_total || 0} sub="total" cor="#f59e0b" help="Chamados aguardando na fila sem atendente. Se alto, pode indicar falta de equipe." />
             <KpiCard label="TPR" valor={fmt(d.tpr_medio_hoje)} sub="média" cor="#3b82f6" help="Tempo de Primeira Resposta — quanto tempo o contato espera até receber a 1ª resposta de um atendente." />
             <KpiCard label="Online" valor={d.atendentes_online || 0} sub="agora" cor="#10b981" help="Atendentes conectados ao sistema neste momento." />
-            <KpiCard label="CSAT" valor={d.csat_medio_hoje || '—'} sub="média" cor="#a855f7" help="Customer Satisfaction Score — nota média de satisfação dada pelos contatos ao fechar chamado (1 a 5)." />
           </div>
         )}
 
@@ -137,13 +136,13 @@ export default function ReportsPage() {
           </ChartCard>
 
           {/* Picos — termômetro */}
-          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun} help="Mostra os horários com maior volume de chamados. Barras vermelhas = pico, amarelas = moderado, roxas = normal. A linha tracejada verde indica quantos atendentes seriam ideais (1 pra cada 3 tickets/dia).">
+          <ChartCard titulo="Picos de atendimento" subtitulo={picoMax.hora !== undefined ? `Pico: ${horaFmt(picoMax.hora)}` : ''} icone={ThermometerSun} help="Mostra os horários com maior volume de chamados. Barras vermelhas = pico, amarelas = moderado, roxas = normal. A linha tracejada verde indica quantos atendentes seriam ideais (1 pra cada 3 chamados/dia).">
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={(picos || []).filter(p => p.hora >= 7 && p.hora <= 21)}>
                 <XAxis dataKey="hora" tickFormatter={horaFmt} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#a1a1aa' }} dy={8} />
                 <YAxis hide />
-                <Tooltip {...tooltipStyle} formatter={(v, n) => [n === 'tickets_media_dia' ? `${v}/dia` : `${v} recomendado`, n === 'tickets_media_dia' ? 'Tickets' : 'Atendentes']} />
-                <Bar dataKey="tickets_media_dia" name="Tickets/dia" radius={[6, 6, 6, 6]} barSize={16}>
+                <Tooltip {...tooltipStyle} formatter={(v, n) => [n === 'tickets_media_dia' ? `${v}/dia` : `${v} recomendado`, n === 'tickets_media_dia' ? 'Chamados' : 'Atendentes']} />
+                <Bar dataKey="tickets_media_dia" name="Chamados/dia" radius={[6, 6, 6, 6]} barSize={16}>
                   {(picos || []).filter(p => p.hora >= 7 && p.hora <= 21).map((p, i) => (
                     <Cell key={i} fill={p.tickets_media_dia >= picoMax.tickets_media_dia * 0.8 ? '#ef4444' : p.tickets_media_dia >= picoMax.tickets_media_dia * 0.5 ? '#f59e0b' : '#7c3aed'} fillOpacity={0.7} />
                   ))}
@@ -195,7 +194,7 @@ export default function ReportsPage() {
                 <div className="w-2 h-8 rounded-full" style={{ background: f.cor || '#7c3aed' }} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{f.nome}</p>
-                  <p className="text-2xs text-[var(--color-text-muted)]">{f.total || 0} tickets</p>
+                  <p className="text-2xs text-[var(--color-text-muted)]">{f.total || 0} chamados</p>
                 </div>
                 {parseInt(f.pendentes) > 0 && (
                   <span className="text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">{f.pendentes}</span>
@@ -210,14 +209,14 @@ export default function ReportsPage() {
           <div className="px-6 py-4">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold">Performance individual</h3>
-              <InfoTooltip text="Métricas de cada atendente no período selecionado. TPR = Tempo de Primeira Resposta, TMA = Tempo Médio de Atendimento, CSAT = nota de satisfação do contato. Clique em 'Ver' para expandir o gráfico diário do atendente." />
+              <InfoTooltip text="Métricas de cada atendente no período selecionado. TPR = Tempo de Primeira Resposta, TMA = Tempo Médio de Atendimento. Clique em 'Ver' para expandir o gráfico diário do atendente." />
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-t border-b border-[var(--color-border)]">
-                  {['Atendente', 'Tickets', 'Resolvidos', 'TPR', 'TMA', 'CSAT', 'Ativos', ''].map(h => (
+                  {['Atendente', 'Chamados', 'Resolvidos', 'TPR', 'TMA', 'Ativos', ''].map(h => (
                     <th key={h} className={cn('px-4 py-3 text-2xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider', h === 'Atendente' ? 'text-left' : 'text-center')}>{h}</th>
                   ))}
                 </tr>
@@ -238,7 +237,6 @@ export default function ReportsPage() {
                     <td className="text-center px-4"><span className="text-emerald-600 font-medium">{a.resolvidos}</span></td>
                     <td className="text-center px-4 text-[var(--color-text-secondary)]">{fmt(a.tpr_medio)}</td>
                     <td className="text-center px-4 text-[var(--color-text-secondary)]">{fmt(a.tr_medio)}</td>
-                    <td className="text-center px-4">{a.csat_medio || '—'}</td>
                     <td className="text-center px-4">{a.tickets_ativos}</td>
                     <td className="px-4">
                       <button onClick={() => setAgenteId(agenteId === a.id ? null : a.id)}
@@ -266,12 +264,11 @@ export default function ReportsPage() {
               <button onClick={() => setAgenteId(null)} className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] px-3 py-1 rounded-full hover:bg-[var(--color-surface-elevated)]">Fechar</button>
             </div>
 
-            <div className="grid grid-cols-5 gap-3 mb-5">
-              <MiniKpi label="Tickets" valor={agente.resumo.tickets_total || 0} help="Total de chamados atribuídos a este atendente no período." />
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              <MiniKpi label="Chamados" valor={agente.resumo.tickets_total || 0} help="Total de chamados atribuídos a este atendente no período." />
               <MiniKpi label="Resolvidos" valor={agente.resumo.resolvidos || 0} help="Chamados finalizados por este atendente." />
               <MiniKpi label="TPR" valor={fmt(agente.resumo.tpr_medio)} help="Tempo médio de primeira resposta deste atendente." />
               <MiniKpi label="TMA" valor={fmt(agente.resumo.tr_medio)} help="Tempo Médio de Atendimento — do início até a resolução do chamado." />
-              <MiniKpi label="CSAT" valor={agente.resumo.csat_medio || '—'} help="Nota média de satisfação dos contatos atendidos por este operador." />
             </div>
 
             {agente.por_dia?.length > 0 && (
