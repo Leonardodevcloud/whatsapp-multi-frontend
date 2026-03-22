@@ -141,7 +141,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     // Blue ticks — marcar como lida no WhatsApp + no banco
     if (ticketAtivo?.id) {
       api.post('/api/whatsapp/marcar-lida', { ticket_id: ticketAtivo.id }).catch(() => {});
-      api.put(`/api/messages/${ticketAtivo.id}/lidas`).catch(() => {});
     }
   }, [ticketAtivo?.id]);
 
