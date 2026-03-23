@@ -113,6 +113,24 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   // Edit
   const [editando, setEditando] = useState(null);
 
+  // Limpar estado ao trocar de chamado
+  useEffect(() => {
+    setTexto('');
+    setModoNota(false);
+    setReplyTo(null);
+    setEditando(null);
+    setTextoPendente('');
+    setBuscaChatAberta(false);
+    setTermoBusca('');
+    setResultadosBusca([]);
+    setModoEncaminhar(false);
+    setMsgsSelecionadas(new Set());
+    setLightbox(null);
+    setMenuAnexo(false);
+    setMidiaPreview(null);
+    setModalFechar(false);
+  }, [ticketAtivo?.id]);
+
   const chatRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
