@@ -115,7 +115,7 @@ export default function TicketSidebar() {
       params.set('status', 'aberto');
       params.set('ordem', 'atividade'); // última atividade primeiro
       if (filtros.busca) params.set('busca', filtros.busca);
-      params.set('limite', '50');
+      params.set('limite', '500');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!usuario?.id,
@@ -130,7 +130,7 @@ export default function TicketSidebar() {
       params.set('usuario_id', usuario?.id);
       params.set('status', 'aguardando');
       params.set('ordem', 'atividade');
-      params.set('limite', '50');
+      params.set('limite', '500');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!usuario?.id,
@@ -146,7 +146,7 @@ export default function TicketSidebar() {
       params.set('status', 'pendente');
       params.set('ordem', 'antigo'); // ← CORREÇÃO: mais antigo no topo
       if (filtros.busca) params.set('busca', filtros.busca);
-      params.set('limite', '50');
+      params.set('limite', '500');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: POLL_FILA,
@@ -161,7 +161,7 @@ export default function TicketSidebar() {
       params.set('status', 'aberto');
       params.set('ordem', 'atividade');
       if (filtros.busca) params.set('busca', filtros.busca);
-      params.set('limite', '50');
+      params.set('limite', '500');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: POLL_ATENDIMENTO,
@@ -185,7 +185,7 @@ export default function TicketSidebar() {
       params.set('fila_id', filaDispositivoId);
       params.set('ordem', 'antigo');
       if (filtros.busca) params.set('busca', filtros.busca);
-      params.set('limite', '50');
+      params.set('limite', '500');
       return api.get(`/api/tickets?${params.toString()}`);
     },
     enabled: !!filaDispositivoId,
