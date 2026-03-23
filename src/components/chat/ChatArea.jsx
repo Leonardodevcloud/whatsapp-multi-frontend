@@ -1795,15 +1795,59 @@ function PasteConfirmModal({ previewUrl, onConfirmar, onCancelar, enviando }) {
 }
 
 function Lightbox({ url, tipo, onFechar }) {
+  const [zoom, setZoom] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onFechar(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [onFechar]);
 
+  const handleWheel = (e) => {
+    e.stopPropagation();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setZoom(z => Math.max(0.5, Math.min(5, z + delta)));
+  };
+
+  const handleMouseDown = (e) => {
+    if (zoom <= 1) return;
+    setDragging(true);
+    setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!dragging) return;
+    setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+
+  const handleMouseUp = () => setDragging(false);
+
+  const resetZoom = () => { setZoom(1); setPos({ x: 0, y: 0 }); };
+
   return (
-    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center" onClick={onFechar}>
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
+      onClick={() => { if (zoom <= 1) onFechar(); }}
+      onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+
+      {/* Toolbar */}
       <div className="absolute top-4 right-4 flex gap-2 z-10">
+        {tipo !== 'video' && (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(5, z + 0.5)); }}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg font-bold">+</button>
+            <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.5, z - 0.5)); }}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg font-bold">−</button>
+            {zoom !== 1 && (
+              <button onClick={(e) => { e.stopPropagation(); resetZoom(); }}
+                className="h-10 px-3 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-xs">
+                {Math.round(zoom * 100)}%
+              </button>
+            )}
+          </>
+        )}
         <a href={url} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
           className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
           <Download className="w-5 h-5 text-white" />
@@ -1812,11 +1856,17 @@ function Lightbox({ url, tipo, onFechar }) {
           <X className="w-5 h-5 text-white" />
         </button>
       </div>
-      <div onClick={(e) => e.stopPropagation()} className="max-w-[90vw] max-h-[90vh]">
+
+      {/* Conteúdo */}
+      <div onClick={(e) => e.stopPropagation()} onWheel={handleWheel}
+        className="max-w-[90vw] max-h-[90vh] overflow-hidden"
+        style={{ cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default' }}>
         {tipo === 'video' ? (
           <video controls autoPlay className="max-w-full max-h-[90vh] rounded-lg"><source src={url} /></video>
         ) : (
-          <img src={url} alt="Mídia" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
+          <img src={url} alt="Mídia" onMouseDown={handleMouseDown} draggable={false}
+            className="max-w-full max-h-[90vh] object-contain rounded-lg select-none transition-transform duration-150"
+            style={{ transform: `scale(${zoom}) translate(${pos.x / zoom}px, ${pos.y / zoom}px)` }} />
         )}
       </div>
     </div>
