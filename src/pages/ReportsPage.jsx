@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton, Avatar } from '../components/ui';
-import { MessageSquare, Clock, CheckCircle2 } from 'lucide-react';
+import { MessageSquare, Clock, Headphones, Users } from 'lucide-react';
 import { cn, formatarDuracao } from '../lib/utils';
 import api from '../lib/api';
 
@@ -63,24 +63,24 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* KPIs */}
+        {/* KPIs principais */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard icone={MessageSquare} label="Chamados" valor={d.tickets_hoje || 0} cor="text-primary" />
-          <KpiCard icone={CheckCircle2} label="Resolvidos" valor={d.resolvidos_hoje || 0} cor="text-emerald-500" />
-          <KpiCard icone={Clock} label="TPR médio" valor={formatarDuracao(d.tpr_medio_hoje)} cor="text-blue-500" />
+          <KpiCard icone={MessageSquare} label="Chamados" valor={d.chamados || 0} cor="text-primary" />
+          <KpiCard icone={Clock} label="TPR médio" valor={formatarDuracao(d.tpr_medio)} cor="text-blue-500" />
+          <KpiCard icone={Headphones} label="TMA" valor={formatarDuracao(d.tma_medio)} cor="text-amber-500" />
           <MiniCard label="Online" valor={d.atendentes_online || 0} cor="bg-emerald-500" />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <MiniCard label="Pendentes" valor={d.pendentes_total || 0} cor="bg-amber-500" />
-          <MiniCard label="TMA" valor={formatarDuracao(d.tr_medio_hoje)} cor="bg-blue-500" />
-          <MiniCard label="Taxa resolução" valor={d.tickets_hoje > 0 ? `${Math.round((d.resolvidos_hoje / d.tickets_hoje) * 100)}%` : '—'} cor="bg-emerald-500" />
+          <MiniCard label="Pendentes" valor={d.pendentes || 0} cor="bg-amber-500" />
+          <MiniCard label="Em atendimento" valor={d.em_atendimento || 0} cor="bg-blue-500" />
+          <MiniCard label="Disponíveis" valor={d.atendentes_online || 0} cor="bg-emerald-500" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Tickets por dia */}
+          {/* Chamados por dia */}
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5">
-            <h3 className="text-sm font-semibold mb-4">Tickets por dia</h3>
+            <h3 className="text-sm font-semibold mb-4">Chamados por dia</h3>
             <div className="flex items-end gap-0.5 h-32">
               {(ticketsDia || []).slice(-periodo).map((dia, i) => {
                 const max = Math.max(...(ticketsDia || []).map((x) => parseInt(x.total) || 1));
@@ -154,7 +154,7 @@ export default function ReportsPage() {
                 <tr className="text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                   <th className="text-left py-2 pr-4">Atendente</th>
                   <th className="text-right py-2 px-3">Chamados</th>
-                  <th className="text-right py-2 px-3">Resolvidos</th>
+                  <th className="text-right py-2 px-3">Concluídos</th>
                   <th className="text-right py-2 px-3">TPR</th>
                   <th className="text-right py-2 px-3">TMA</th>
                   <th className="text-right py-2 pl-3">Ativos</th>
@@ -170,7 +170,7 @@ export default function ReportsPage() {
                       </div>
                     </td>
                     <td className="text-right px-3 font-medium">{a.tickets_total}</td>
-                    <td className="text-right px-3 text-emerald-600 font-medium">{a.resolvidos}</td>
+                    <td className="text-right px-3 text-emerald-600 font-medium">{a.concluidos}</td>
                     <td className="text-right px-3 text-[var(--color-text-muted)]">{formatarDuracao(a.tpr_medio)}</td>
                     <td className="text-right px-3 text-[var(--color-text-muted)]">{formatarDuracao(a.tr_medio)}</td>
                     <td className="text-right pl-3">{a.tickets_ativos}</td>
