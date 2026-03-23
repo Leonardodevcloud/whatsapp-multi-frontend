@@ -97,7 +97,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [modalSticker, setModalSticker] = useState(false);
   const [enviandoSticker, setEnviandoSticker] = useState(false);
   const [painelRespostas, setPainelRespostas] = useState(false);
-  const [confirmaPuxar, setConfirmaPuxar] = useState(false);
   const [textoPendente, setTextoPendente] = useState('');
   const [midiaPreview, setMidiaPreview] = useState(null);
   const [modalFechar, setModalFechar] = useState(false);
@@ -482,7 +481,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
     },
     onError: (err) => toast.error(err.message),
   });
@@ -520,23 +522,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       return;
     }
 
-    // Verificar se ticket é de outro atendente — buscar dados frescos do servidor
-    // (cache local pode estar desatualizado)
-    try {
-      const ticketFresco = await api.get(`/api/tickets/${ticketAtivo.id}`);
-      const donoAtual = ticketFresco?.usuario_id || ticketFresco?.ticket?.usuario_id;
-      const statusAtual = ticketFresco?.status || ticketFresco?.ticket?.status;
-      const outroAtendente = donoAtual && donoAtual !== usuario?.id && statusAtual === 'aberto';
-
-      if (outroAtendente) {
-        setTextoPendente(texto.trim());
-        setConfirmaPuxar(true);
-        return;
-      }
-    } catch {
-      // Se falhar, segue sem verificação
-    }
-
     const textoEnvio = texto.trim();
     const quotedId = replyTo?.id || null;
     const mentionedPhones = mentions.map(m => m.telefone);
@@ -544,31 +529,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     setReplyTo(null);
     setMentions([]);
     enviarMutation.mutate({ textoEnvio, isNota: modoNota, quotedMessageId: quotedId, mentionedPhones });
-  };
-
-  const confirmarPuxarChamado = async () => {
-    try {
-      const updated = await api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id: usuario.id });
-      // Atualizar ticket local pra refletir novo dono
-      if (updated) selecionarTicket({ ...ticketAtivo, usuario_id: usuario.id, status: 'aberto' });
-
-      if (modoNota) {
-        await api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoPendente });
-      } else {
-        await api.post('/api/whatsapp/enviar', { ticket_id: ticketAtivo.id, texto: textoPendente });
-      }
-      setTexto('');
-      setTextoPendente('');
-      setConfirmaPuxar(false);
-      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
-      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
-      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
-      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
-      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
-      toast.success('Chamado puxado e mensagem enviada!');
-    } catch (err) {
-      toast.error(err.message || 'Erro ao puxar chamado');
-    }
   };
 
   // ============ ENVIO DE MÍDIA — com preview local + compressão (item 4) ============
@@ -1572,37 +1532,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                     .catch((err) => toast.error(err.message || 'Erro'));
                 }}
               />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmaPuxar && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setConfirmaPuxar(false)}>
-          <div className="bg-[var(--color-surface)] rounded-xl shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="text-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
-                <ArrowRightLeft className="w-6 h-6 text-amber-600" />
-              </div>
-              <h3 className="text-sm font-semibold mb-2">Chamado em atendimento</h3>
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Este chamado está sendo atendido por <strong className="text-[var(--color-text)]">{ticketAtivo?.atendente_nome || 'outro atendente'}</strong>.
-                Tem certeza que deseja puxar para você?
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setConfirmaPuxar(false); setTextoPendente(''); }}
-                className="flex-1 h-9 rounded-lg border border-[var(--color-border)] text-sm font-medium hover:bg-[var(--color-surface-elevated)] transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmarPuxarChamado}
-                className="flex-1 h-9 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                Sim, puxar
-              </button>
             </div>
           </div>
         </div>
