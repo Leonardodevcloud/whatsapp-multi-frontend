@@ -391,6 +391,7 @@ export default function TicketSidebar() {
                 ativo={ticketAtivo?.id === ticket.id}
                 onClick={() => handleSelecionarTicket(ticket)}
                 mostrarAtendente={abaAtiva === 'emAtendimento'}
+                mostrarTempoEspera={abaAtiva === 'fila' || abaAtiva === 'externo'}
               />
             ))}
           </div>
@@ -427,8 +428,18 @@ export default function TicketSidebar() {
   );
 }
 
-function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
+function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEspera }) {
   const naoLidas = parseInt(ticket.nao_lidas || 0);
+
+  // Calcular tempo de espera desde criação do ticket
+  const tempoEspera = () => {
+    if (!mostrarTempoEspera || !ticket.criado_em) return null;
+    const diff = Math.floor((Date.now() - new Date(ticket.criado_em).getTime()) / 1000);
+    if (diff < 60) return 'agora';
+    if (diff < 3600) return `${Math.floor(diff / 60)}min`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h${Math.floor((diff % 3600) / 60)}m`;
+    return `${Math.floor(diff / 86400)}d`;
+  };
 
   return (
     <button
@@ -461,8 +472,8 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente }) {
               {ticket.contato_nome || ticket.contato_telefone}
             </span>
           </div>
-          <span className="text-2xs text-[var(--color-text-muted)] shrink-0">
-            {formatarDataTicket(ticket.ultima_mensagem_em || ticket.criado_em)}
+          <span className={cn('text-2xs shrink-0', mostrarTempoEspera ? 'text-amber-600 font-medium' : 'text-[var(--color-text-muted)]')}>
+            {mostrarTempoEspera ? `⏱ ${tempoEspera()}` : formatarDataTicket(ticket.ultima_mensagem_em || ticket.criado_em)}
           </span>
         </div>
 

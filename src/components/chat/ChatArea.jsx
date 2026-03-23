@@ -935,11 +935,15 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
   const transferirMutation = useMutation({
     mutationFn: ({ usuario_id }) => api.post(`/api/tickets/${ticketAtivo?.id}/transferir`, { usuario_id }),
-    onSuccess: (data) => {
-      selecionarTicket(data);
+    onSuccess: () => {
+      selecionarTicket(null); // Deselecionar — saiu da minha posse
       setMenuTransferir(false);
-      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo?.id] });
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      // Invalidar TODAS as listas da sidebar
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-dispositivo-externo'] });
       toast.success('Chamado transferido!');
     },
     onError: (err) => toast.error(err.message),
