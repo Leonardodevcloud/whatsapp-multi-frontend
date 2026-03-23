@@ -434,11 +434,26 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEsp
   // Calcular tempo de espera desde criação do ticket
   const tempoEspera = () => {
     if (!mostrarTempoEspera || !ticket.criado_em) return null;
-    const diff = Math.floor((Date.now() - new Date(ticket.criado_em).getTime()) / 1000);
+    // Forçar parse UTC caso timestamp venha sem Z
+    let criado = new Date(ticket.criado_em);
+    if (!String(ticket.criado_em).includes('Z') && !String(ticket.criado_em).includes('+')) {
+      criado = new Date(ticket.criado_em + 'Z');
+    }
+    const diff = Math.floor((Date.now() - criado.getTime()) / 1000);
+    if (diff < 0) return 'agora';
     if (diff < 60) return 'agora';
     if (diff < 3600) return `${Math.floor(diff / 60)}min`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h${Math.floor((diff % 3600) / 60)}m`;
     return `${Math.floor(diff / 86400)}d`;
+  };
+
+  const horaCriacao = () => {
+    if (!ticket.criado_em) return '';
+    let d = new Date(ticket.criado_em);
+    if (!String(ticket.criado_em).includes('Z') && !String(ticket.criado_em).includes('+')) {
+      d = new Date(ticket.criado_em + 'Z');
+    }
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -473,7 +488,7 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEsp
             </span>
           </div>
           <span className={cn('text-2xs shrink-0', mostrarTempoEspera ? 'text-amber-600 font-medium' : 'text-[var(--color-text-muted)]')}>
-            {mostrarTempoEspera ? `⏱ ${tempoEspera()}` : formatarDataTicket(ticket.ultima_mensagem_em || ticket.criado_em)}
+            {mostrarTempoEspera ? `${horaCriacao()} · ⏱${tempoEspera()}` : formatarDataTicket(ticket.ultima_mensagem_em || ticket.criado_em)}
           </span>
         </div>
 
