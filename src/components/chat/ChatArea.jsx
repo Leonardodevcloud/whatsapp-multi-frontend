@@ -118,12 +118,15 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [mentionPicker, setMentionPicker] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
 
+  // Detectar se é grupo — pelo telefone ou pelo nome (grupos têm nome longo com espaços)
+  const contatoTel = ticketAtivo?.contato_telefone || '';
+  const ehGrupo = contatoTel.startsWith('120363') || contatoTel.includes('-') || contatoTel.length > 15;
+
   // Buscar membros do grupo
-  const ehGrupo = ticketAtivo?.contato_telefone?.startsWith('120363') || ticketAtivo?.contato_telefone?.includes('-');
   const { data: grupoData } = useQuery({
     queryKey: ['grupo-membros', ticketAtivo?.id],
     queryFn: () => api.get(`/api/whatsapp/grupo-membros/${ticketAtivo.id}`),
-    enabled: !!ticketAtivo?.id && !!ehGrupo,
+    enabled: !!ticketAtivo?.id && ehGrupo,
     staleTime: 60000,
   });
 
@@ -1287,7 +1290,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             </div>
           )}
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 relative">
             <button onClick={() => setModoNota(!modoNota)} title="Nota interna"
               className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
                 modoNota ? 'bg-amber-100 text-amber-700' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]')}>
@@ -1342,41 +1345,44 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
             </div>
 
             {/* Mention picker — aparece acima do input quando digita @ em grupo */}
-            {mentionPicker && ehGrupo && grupoData?.membros?.length > 0 && (
+            {mentionPicker && ehGrupo && (
               <div className="absolute bottom-full left-0 right-0 mb-1 mx-16 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto py-1">
                 <p className="px-3 py-1 text-2xs text-[var(--color-text-muted)] font-medium">Mencionar membro</p>
-                {grupoData.membros
-                  .filter(m => !mentionSearch || m.nome.toLowerCase().includes(mentionSearch.toLowerCase()) || m.telefone.includes(mentionSearch))
-                  .slice(0, 10)
-                  .map(m => (
-                    <button key={m.telefone} onClick={() => {
-                      // Substituir @busca pelo @Nome
+                {!grupoData?.membros?.length ? (
+                  <p className="px-3 py-2 text-xs text-[var(--color-text-muted)]">Carregando membros...</p>
+                ) : (
+                  <>
+                    {grupoData.membros
+                      .filter(m => !mentionSearch || m.nome.toLowerCase().includes(mentionSearch.toLowerCase()) || m.telefone.includes(mentionSearch))
+                      .slice(0, 10)
+                      .map(m => (
+                        <button key={m.telefone} onClick={() => {
+                          const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+                          setTexto(prev => prev.replace(regex, `@${m.nome} `));
+                          setMentions(prev => [...prev.filter(p => p.telefone !== m.telefone), { telefone: m.telefone, nome: m.nome }]);
+                          setMentionPicker(false);
+                          setMentionSearch('');
+                          inputRef.current?.focus();
+                        }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 transition-colors">
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <span className="text-2xs font-semibold text-primary">{m.nome?.charAt(0)?.toUpperCase()}</span>
+                          </div>
+                          <span className="truncate">{m.nome}</span>
+                          {m.admin && <span className="text-2xs text-amber-500 shrink-0">admin</span>}
+                        </button>
+                      ))}
+                    <button onClick={() => {
                       const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-                      setTexto(prev => prev.replace(regex, `@${m.nome} `));
-                      setMentions(prev => [...prev.filter(p => p.telefone !== m.telefone), { telefone: m.telefone, nome: m.nome }]);
+                      setTexto(prev => prev.replace(regex, '@todos '));
+                      setMentions([{ telefone: 'all', nome: 'todos' }]);
                       setMentionPicker(false);
                       setMentionSearch('');
-                      inputRef.current?.focus();
                     }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 transition-colors">
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <span className="text-2xs font-semibold text-primary">{m.nome?.charAt(0)?.toUpperCase()}</span>
-                      </div>
-                      <span className="truncate">{m.nome}</span>
-                      {m.admin && <span className="text-2xs text-amber-500 shrink-0">admin</span>}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 text-primary font-medium">
+                      📢 Mencionar @todos
                     </button>
-                  ))}
-                {mentionSearch && (
-                  <button onClick={() => {
-                    const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-                    setTexto(prev => prev.replace(regex, '@todos '));
-                    setMentions([{ telefone: 'all', nome: 'todos' }]);
-                    setMentionPicker(false);
-                    setMentionSearch('');
-                  }}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 text-primary font-medium">
-                    📢 Mencionar @todos
-                  </button>
+                  </>
                 )}
               </div>
             )}
@@ -1386,7 +1392,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                 const val = e.target.value;
                 setTexto(val);
                 // Detectar @ pra abrir mention picker em grupos
-                if (ehGrupo && grupoData?.membros?.length) {
+                if (ehGrupo) {
                   const cursorPos = e.target.selectionStart;
                   const textBefore = val.slice(0, cursorPos);
                   const atMatch = textBefore.match(/@(\w*)$/);
