@@ -113,6 +113,20 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   // Edit
   const [editando, setEditando] = useState(null);
 
+  // Mentions (@) em grupos
+  const [mentions, setMentions] = useState([]); // [{telefone, nome}]
+  const [mentionPicker, setMentionPicker] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+
+  // Buscar membros do grupo
+  const ehGrupo = ticketAtivo?.contato_telefone?.startsWith('120363') || ticketAtivo?.contato_telefone?.includes('-');
+  const { data: grupoData } = useQuery({
+    queryKey: ['grupo-membros', ticketAtivo?.id],
+    queryFn: () => api.get(`/api/whatsapp/grupo-membros/${ticketAtivo.id}`),
+    enabled: !!ticketAtivo?.id && !!ehGrupo,
+    staleTime: 60000,
+  });
+
   // Limpar estado ao trocar de chamado
   useEffect(() => {
     setTexto('');
@@ -129,6 +143,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     setMenuAnexo(false);
     setMidiaPreview(null);
     setModalFechar(false);
+    setMentions([]);
+    setMentionPicker(false);
   }, [ticketAtivo?.id]);
 
   const chatRef = useRef(null);
@@ -420,12 +436,13 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
   // Enviar texto — OPTIMISTIC UPDATE (com quote/reply)
   const enviarMutation = useMutation({
-    mutationFn: async ({ textoEnvio, isNota, quotedMessageId }) => {
+    mutationFn: async ({ textoEnvio, isNota, quotedMessageId, mentionedPhones }) => {
       if (isNota) return api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoEnvio });
       return api.post('/api/whatsapp/enviar', {
         ticket_id: ticketAtivo.id,
         texto: textoEnvio,
         quoted_message_id: quotedMessageId || undefined,
+        mentioned: mentionedPhones?.length ? mentionedPhones : undefined,
       });
     },
     onMutate: async ({ textoEnvio, isNota, quotedMessageId }) => {
@@ -508,9 +525,11 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
     const textoEnvio = texto.trim();
     const quotedId = replyTo?.id || null;
+    const mentionedPhones = mentions.map(m => m.telefone);
     setTexto('');
     setReplyTo(null);
-    enviarMutation.mutate({ textoEnvio, isNota: modoNota, quotedMessageId: quotedId });
+    setMentions([]);
+    enviarMutation.mutate({ textoEnvio, isNota: modoNota, quotedMessageId: quotedId, mentionedPhones });
   };
 
   const confirmarPuxarChamado = async () => {
@@ -1322,7 +1341,68 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
               )}
             </div>
 
-            <textarea ref={inputRef} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={handleKeyDown}
+            {/* Mention picker — aparece acima do input quando digita @ em grupo */}
+            {mentionPicker && ehGrupo && grupoData?.membros?.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 mx-16 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto py-1">
+                <p className="px-3 py-1 text-2xs text-[var(--color-text-muted)] font-medium">Mencionar membro</p>
+                {grupoData.membros
+                  .filter(m => !mentionSearch || m.nome.toLowerCase().includes(mentionSearch.toLowerCase()) || m.telefone.includes(mentionSearch))
+                  .slice(0, 10)
+                  .map(m => (
+                    <button key={m.telefone} onClick={() => {
+                      // Substituir @busca pelo @Nome
+                      const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+                      setTexto(prev => prev.replace(regex, `@${m.nome} `));
+                      setMentions(prev => [...prev.filter(p => p.telefone !== m.telefone), { telefone: m.telefone, nome: m.nome }]);
+                      setMentionPicker(false);
+                      setMentionSearch('');
+                      inputRef.current?.focus();
+                    }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 transition-colors">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-2xs font-semibold text-primary">{m.nome?.charAt(0)?.toUpperCase()}</span>
+                      </div>
+                      <span className="truncate">{m.nome}</span>
+                      {m.admin && <span className="text-2xs text-amber-500 shrink-0">admin</span>}
+                    </button>
+                  ))}
+                {mentionSearch && (
+                  <button onClick={() => {
+                    const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+                    setTexto(prev => prev.replace(regex, '@todos '));
+                    setMentions([{ telefone: 'all', nome: 'todos' }]);
+                    setMentionPicker(false);
+                    setMentionSearch('');
+                  }}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 text-primary font-medium">
+                    📢 Mencionar @todos
+                  </button>
+                )}
+              </div>
+            )}
+
+            <textarea ref={inputRef} value={texto}
+              onChange={(e) => {
+                const val = e.target.value;
+                setTexto(val);
+                // Detectar @ pra abrir mention picker em grupos
+                if (ehGrupo && grupoData?.membros?.length) {
+                  const cursorPos = e.target.selectionStart;
+                  const textBefore = val.slice(0, cursorPos);
+                  const atMatch = textBefore.match(/@(\w*)$/);
+                  if (atMatch) {
+                    setMentionPicker(true);
+                    setMentionSearch(atMatch[1] || '');
+                  } else {
+                    setMentionPicker(false);
+                    setMentionSearch('');
+                  }
+                }
+              }}
+              onKeyDown={(e) => {
+                if (mentionPicker && e.key === 'Escape') { setMentionPicker(false); return; }
+                handleKeyDown(e);
+              }}
               placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
               rows={1}
               className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0 overflow-hidden"
