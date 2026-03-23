@@ -148,6 +148,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     setModalFechar(false);
     setMentions([]);
     setMentionPicker(false);
+    setPastePreview(null);
   }, [ticketAtivo?.id]);
 
   const chatRef = useRef(null);
@@ -733,6 +734,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   };
 
   // Colar imagem da área de transferência (Ctrl+V com print/screenshot)
+  // State pro modal de confirmação de paste
+  const [pastePreview, setPastePreview] = useState(null); // { base64, previewUrl }
+
   const handlePaste = async (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -743,23 +747,34 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
         const file = item.getAsFile();
         if (!file || !ticketAtivo) return;
 
-        setEnviandoMidia(true);
         try {
           const base64 = await comprimirImagem(file);
-          await api.post('/api/whatsapp/enviar-imagem', {
-            ticket_id: ticketAtivo.id,
-            imagem_base64: base64,
-            caption: '',
-          });
-          queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
-          toast.success('Imagem colada e enviada!');
-        } catch (err) {
-          toast.error(err.message || 'Erro ao enviar imagem');
-        } finally {
-          setEnviandoMidia(false);
+          const previewUrl = URL.createObjectURL(file);
+          setPastePreview({ base64, previewUrl });
+        } catch {
+          toast.error('Erro ao processar imagem');
         }
         return;
       }
+    }
+  };
+
+  const confirmarEnvioPaste = async (caption) => {
+    if (!pastePreview || !ticketAtivo) return;
+    setEnviandoMidia(true);
+    try {
+      await api.post('/api/whatsapp/enviar-imagem', {
+        ticket_id: ticketAtivo.id,
+        imagem_base64: pastePreview.base64,
+        caption: caption || '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+      toast.success('Imagem enviada!');
+    } catch (err) {
+      toast.error(err.message || 'Erro ao enviar imagem');
+    } finally {
+      setEnviandoMidia(false);
+      setPastePreview(null);
     }
   };
 
@@ -1485,6 +1500,14 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       {menuAnexo && <div className="fixed inset-0 z-40" onClick={() => setMenuAnexo(false)} />}
       {lightbox && <Lightbox url={lightbox.url} tipo={lightbox.tipo} onFechar={() => setLightbox(null)} />}
 
+      {/* Modal confirmação de paste (Ctrl+V imagem) */}
+      {pastePreview && <PasteConfirmModal
+        previewUrl={pastePreview.previewUrl}
+        onConfirmar={confirmarEnvioPaste}
+        onCancelar={() => { setPastePreview(null); }}
+        enviando={enviandoMidia}
+      />}
+
       {/* Modal Galeria de Stickers — com abas Favoritos / Recebidos (item 6) */}
       {modalSticker && (
         <StickerGalleryModal
@@ -1728,6 +1751,49 @@ function StickerGalleryModal({ stickersGaleria, stickersFavoritos, favoritosUrls
 }
 
 // ============ LIGHTBOX ============
+function PasteConfirmModal({ previewUrl, onConfirmar, onCancelar, enviando }) {
+  const [caption, setCaption] = useState('');
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-50" onClick={onCancelar} />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Enviar imagem</h3>
+          <button onClick={onCancelar} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4">
+          <div className="bg-[var(--color-surface-elevated)] rounded-xl p-2 flex items-center justify-center" style={{ maxHeight: '300px' }}>
+            <img src={previewUrl} alt="Preview" className="max-h-[280px] max-w-full rounded-lg object-contain" />
+          </div>
+
+          <input
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !enviando && onConfirmar(caption)}
+            placeholder="Legenda (opcional)"
+            className="w-full mt-3 h-10 px-3 rounded-xl bg-[var(--color-surface-elevated)] border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            autoFocus
+          />
+        </div>
+
+        <div className="px-5 py-3 border-t border-[var(--color-border)] flex justify-end gap-2">
+          <button onClick={onCancelar} className="px-4 py-2 rounded-xl text-sm text-[var(--color-text-muted)] hover:bg-[var(--color-surface-elevated)]">
+            Cancelar
+          </button>
+          <button onClick={() => onConfirmar(caption)} disabled={enviando}
+            className="px-4 py-2 rounded-xl text-sm font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50">
+            {enviando ? 'Enviando...' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Lightbox({ url, tipo, onFechar }) {
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onFechar(); };
