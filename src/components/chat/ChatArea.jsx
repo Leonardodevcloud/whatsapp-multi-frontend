@@ -166,8 +166,8 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     queryKey: ['mensagens', ticketAtivo?.id],
     queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=50`),
     enabled: !!ticketAtivo?.id,
-    refetchInterval: 3000,
-    staleTime: 2000,
+    refetchInterval: 15000, // Fallback — WS atualiza em tempo real
+    staleTime: 5000,
   });
 
   // Reset ao trocar de ticket
