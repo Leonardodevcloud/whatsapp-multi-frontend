@@ -83,7 +83,7 @@ export default function App() {
         try {
           // Buscar token via API (cookie httpOnly não é legível por JS)
           const res = await fetch(
-            `${import.meta.env.VITE_API_URL}/api/auth/ws-token`,
+            '/api/auth/ws-token',
             { credentials: 'include' }
           );
           if (res.ok) {
