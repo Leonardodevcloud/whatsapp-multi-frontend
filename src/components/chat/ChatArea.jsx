@@ -732,6 +732,37 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     }
   };
 
+  // Colar imagem da área de transferência (Ctrl+V com print/screenshot)
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file || !ticketAtivo) return;
+
+        setEnviandoMidia(true);
+        try {
+          const base64 = await comprimirImagem(file);
+          await api.post('/api/whatsapp/enviar-imagem', {
+            ticket_id: ticketAtivo.id,
+            imagem_base64: base64,
+            caption: '',
+          });
+          queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
+          toast.success('Imagem colada e enviada!');
+        } catch (err) {
+          toast.error(err.message || 'Erro ao enviar imagem');
+        } finally {
+          setEnviandoMidia(false);
+        }
+        return;
+      }
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (quickReplyAberto && quickRepliesFiltradas.length > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setQuickReplyIdx((i) => Math.min(i + 1, quickRepliesFiltradas.length - 1)); return; }
@@ -1372,16 +1403,6 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                           {m.admin && <span className="text-2xs text-amber-500 shrink-0">admin</span>}
                         </button>
                       ))}
-                    <button onClick={() => {
-                      const regex = new RegExp(`@${mentionSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-                      setTexto(prev => prev.replace(regex, '@todos '));
-                      setMentions([{ telefone: 'all', nome: 'todos' }]);
-                      setMentionPicker(false);
-                      setMentionSearch('');
-                    }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2 text-primary font-medium">
-                      📢 Mencionar @todos
-                    </button>
                   </>
                 )}
               </div>
@@ -1409,6 +1430,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                 if (mentionPicker && e.key === 'Escape') { setMentionPicker(false); return; }
                 handleKeyDown(e);
               }}
+              onPaste={handlePaste}
               placeholder={modoNota ? 'Escreva uma nota interna...' : 'Digite / para respostas rápidas...'}
               rows={1}
               className="flex-1 resize-none rounded-xl bg-[var(--color-surface-elevated)] dark:bg-surface-dark-elevated px-4 py-2.5 text-sm placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-primary/30 border-0 overflow-hidden"
@@ -2236,8 +2258,11 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
 
 // Componente pra tornar links clicáveis + highlight de busca
 function Linkify({ texto, enviada, buscaTermo }) {
+  // Regex: URLs e números com 3+ dígitos (opcionalmente com pontos/hifens)
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = texto.split(urlRegex);
+  const numRegex = /(\d[\d.\-\/]{2,}\d)/g;
+  const combinedRegex = /(https?:\/\/[^\s]+|\d[\d.\-\/]{2,}\d)/g;
+  const parts = texto.split(combinedRegex);
 
   const highlightTexto = (text) => {
     if (!buscaTermo || buscaTermo.length < 2) return text;
@@ -2250,11 +2275,21 @@ function Linkify({ texto, enviada, buscaTermo }) {
   const hasUrl = urlRegex.test(texto);
   urlRegex.lastIndex = 0;
 
+  const copiarNumero = (num) => {
+    navigator.clipboard.writeText(num.replace(/[.\-\/]/g, '')).then(() => {
+      toast.success(`Copiado: ${num}`, { duration: 1500 });
+    }).catch(() => {});
+  };
+
   return (
     <>
       {parts.map((part, i) => {
         if (/(https?:\/\/[^\s]+)/.test(part)) {
           return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={cn('underline break-all', enviada ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80')}>{part}</a>;
+        }
+        if (/^\d[\d.\-\/]{2,}\d$/.test(part)) {
+          return <span key={i} onClick={() => copiarNumero(part)} title="Clique para copiar"
+            className={cn('cursor-pointer underline decoration-dotted', enviada ? 'text-white/90 hover:text-white' : 'text-primary hover:text-primary/80')}>{highlightTexto(part)}</span>;
         }
         return <span key={i}>{highlightTexto(part)}</span>;
       })}
