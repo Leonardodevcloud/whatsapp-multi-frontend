@@ -520,11 +520,21 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       return;
     }
 
-    const outroAtendente = ticketAtivo.usuario_id && ticketAtivo.usuario_id !== usuario?.id && ticketAtivo.status === 'aberto';
-    if (outroAtendente) {
-      setTextoPendente(texto.trim());
-      setConfirmaPuxar(true);
-      return;
+    // Verificar se ticket é de outro atendente — buscar dados frescos do servidor
+    // (cache local pode estar desatualizado)
+    try {
+      const ticketFresco = await api.get(`/api/tickets/${ticketAtivo.id}`);
+      const donoAtual = ticketFresco?.usuario_id || ticketFresco?.ticket?.usuario_id;
+      const statusAtual = ticketFresco?.status || ticketFresco?.ticket?.status;
+      const outroAtendente = donoAtual && donoAtual !== usuario?.id && statusAtual === 'aberto';
+
+      if (outroAtendente) {
+        setTextoPendente(texto.trim());
+        setConfirmaPuxar(true);
+        return;
+      }
+    } catch {
+      // Se falhar, segue sem verificação
     }
 
     const textoEnvio = texto.trim();
@@ -538,7 +548,10 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
 
   const confirmarPuxarChamado = async () => {
     try {
-      await api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id: usuario.id });
+      const updated = await api.post(`/api/tickets/${ticketAtivo.id}/transferir`, { usuario_id: usuario.id });
+      // Atualizar ticket local pra refletir novo dono
+      if (updated) selecionarTicket({ ...ticketAtivo, usuario_id: usuario.id, status: 'aberto' });
+
       if (modoNota) {
         await api.post(`/api/messages/${ticketAtivo.id}/nota`, { texto: textoPendente });
       } else {
@@ -548,8 +561,9 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
       setTextoPendente('');
       setConfirmaPuxar(false);
       queryClient.invalidateQueries({ queryKey: ['mensagens', ticketAtivo.id] });
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-meus'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-meus-aguardando'] });
+      queryClient.invalidateQueries({ queryKey: ['chamados-fila'] });
       queryClient.invalidateQueries({ queryKey: ['chamados-atendimento'] });
       toast.success('Chamado puxado e mensagem enviada!');
     } catch (err) {
