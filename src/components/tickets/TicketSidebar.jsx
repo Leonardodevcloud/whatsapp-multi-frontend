@@ -13,12 +13,12 @@ import toast from 'react-hot-toast';
 const NOTIFICATION_SOUND_URL = 'data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQADAAB/f39/gICBgYKCg4OEhIWFhoaHh4iIiYmKiouLjIyNjY6Oj4+QkJGRkpKTk5SUlZWWlpeXmJiZmZqam5ucnJ2dnp6fn6CgoaGioqOjpKSlpaampqenpqalpKOioaCfnp2cm5qZmJeWlZSTkpGQj46NjIuKiYiHhoWEg4KBgIB/fn19fHt6eXh3dnV0c3JxcHBvcG9wb3BvcHFycnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TExcXFxcXFxMTDw8LBwL++vby7urm4t7a1tLOysbCvrq2sq6qpqKempaSjoqGgn56dnJuamZiXlpWUk5KRkI+OjYyLiomIh4aFhIKBgH9+fHt6eXd2dXNycXBvbm1sa2pqaWlpaWlqa2tsbW5vcHFyc3R1dnd4eXp7fH1+f4A=';
 
 // ============ INTERVALOS DE POLLING ============
-// Banco na mesma região (US East) — queries em ~20ms
-// Polling rápido é sustentável agora
-const POLL_MEUS_CHATS = 10000;    // 10s — WebSocket atualiza em tempo real
-const POLL_FILA = 10000;           // 10s
-const POLL_ATENDIMENTO = 15000;    // 15s
-const POLL_EXTERNO = 15000;        // 15s
+// WebSocket é o canal real-time — polling é apenas fallback de segurança
+// Reduzido drasticamente pra economizar CPU/requests no Railway
+const POLL_MEUS_CHATS = 60000;     // 60s — WS invalida em tempo real
+const POLL_FILA = 60000;            // 60s
+const POLL_ATENDIMENTO = 120000;    // 2min
+const POLL_EXTERNO = 120000;        // 2min
 
 export default function TicketSidebar() {
   const ticketAtivo = useTicketStore((s) => s.ticketAtivo);
@@ -121,7 +121,7 @@ export default function TicketSidebar() {
     },
     enabled: !!usuario?.id,
     refetchInterval: abaAtiva === 'meusChats' ? POLL_MEUS_CHATS : false,
-    staleTime: 3000,
+    staleTime: 30000,
   });
 
   const { data: meusAguardandoData } = useQuery({
@@ -136,7 +136,7 @@ export default function TicketSidebar() {
     },
     enabled: !!usuario?.id,
     refetchInterval: abaAtiva === 'meusChats' ? POLL_ATENDIMENTO : false,
-    staleTime: 3000,
+    staleTime: 30000,
   });
 
   // Fila — MAIS ANTIGO PRIMEIRO (ordem=antigo)
@@ -151,7 +151,7 @@ export default function TicketSidebar() {
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: abaAtiva === 'fila' ? POLL_FILA : false,
-    staleTime: 3000,
+    staleTime: 30000,
   });
 
   // Em Atendimento
@@ -166,7 +166,7 @@ export default function TicketSidebar() {
       return api.get(`/api/tickets?${params.toString()}`);
     },
     refetchInterval: abaAtiva === 'emAtendimento' ? POLL_ATENDIMENTO : false,
-    staleTime: 3000,
+    staleTime: 30000,
   });
 
   // Dispositivo Externo
@@ -191,7 +191,7 @@ export default function TicketSidebar() {
     },
     enabled: !!filaDispositivoId,
     refetchInterval: abaAtiva === 'externo' ? POLL_EXTERNO : false,
-    staleTime: 3000,
+    staleTime: 30000,
   });
 
   // BUSCA GLOBAL — busca em TODOS os tickets ativos (pendente, aberto, aguardando)
@@ -212,7 +212,7 @@ export default function TicketSidebar() {
       return { tickets: unicos };
     },
     enabled: !!filtros.busca && filtros.busca.length >= 2,
-    staleTime: 2000,
+    staleTime: 15000,
   });
 
   const meusChats = [...(meusChatsData?.tickets || []), ...(meusAguardandoData?.tickets || [])];

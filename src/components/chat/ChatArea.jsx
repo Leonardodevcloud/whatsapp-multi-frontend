@@ -167,7 +167,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
     queryKey: ['mensagens', ticketAtivo?.id],
     queryFn: () => api.get(`/api/messages/${ticketAtivo.id}?limite=50`),
     enabled: !!ticketAtivo?.id,
-    refetchInterval: 15000, // Fallback — WS atualiza em tempo real
+    refetchInterval: 60000, // 60s fallback — WS atualiza em tempo real
     staleTime: 5000,
   });
 
