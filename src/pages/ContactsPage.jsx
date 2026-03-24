@@ -3,12 +3,15 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Avatar, Skeleton, EmptyState } from '../components/ui';
 import {
   Users, Search, Phone, MessageSquare, MoreVertical, History,
-  X, Download, ChevronDown, UsersRound, User, Hash, Clock, Loader2,
+  X, Download, ChevronDown, UsersRound, User, Hash, Clock, Loader2, Send,
 } from 'lucide-react';
 import { cn, formatarDataMensagem, formatarDataRelativa } from '../lib/utils';
+import { useTicketStore } from '../stores/ticketStore';
+import toast from 'react-hot-toast';
 import api from '../lib/api';
 
 const PAGE_SIZE = 60;
@@ -21,6 +24,8 @@ export default function ContactsPage() {
   const [totalGeral, setTotalGeral] = useState(0);
   const [temMais, setTemMais] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
+  const navigate = useNavigate();
+  const selecionarTicket = useTicketStore((s) => s.selecionarTicket);
 
   // Primeira página
   const { isLoading } = useQuery({
@@ -131,6 +136,16 @@ export default function ContactsPage() {
                     contato={c}
                     isGrupo={aba === 'grupo'}
                     onVerHistorico={() => setHistoricoAberto(c)}
+                    onIniciarConversa={async () => {
+                      try {
+                        const ticket = await api.post('/api/tickets/criar-para-contato', { contato_id: c.id });
+                        selecionarTicket(ticket);
+                        navigate('/tickets');
+                        toast.success('Conversa iniciada');
+                      } catch (err) {
+                        toast.error(err.message || 'Erro ao iniciar conversa');
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -170,9 +185,9 @@ export default function ContactsPage() {
 // ============================================================
 // CARD DO CONTATO
 // ============================================================
-function ContatoCard({ contato, isGrupo, onVerHistorico }) {
+function ContatoCard({ contato, isGrupo, onVerHistorico, onIniciarConversa }) {
   const [menuAberto, setMenuAberto] = useState(false);
-  const totalTickets = parseInt(contato.total_tickets || 0);
+  const totalChamados = parseInt(contato.total_chamados || 0);
 
   return (
     <div className="relative bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 hover:border-primary/30 hover:shadow-md transition-all group">
@@ -200,6 +215,13 @@ function ContatoCard({ contato, isGrupo, onVerHistorico }) {
               <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
               <div className="absolute right-0 top-8 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl z-50 py-1.5 min-w-[180px]">
                 <button
+                  onClick={() => { onIniciarConversa(); setMenuAberto(false); }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors"
+                >
+                  <Send className="w-3.5 h-3.5 text-emerald-500" />
+                  Iniciar conversa
+                </button>
+                <button
                   onClick={() => { onVerHistorico(); setMenuAberto(false); }}
                   className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--color-surface-elevated)] flex items-center gap-2.5 transition-colors"
                 >
@@ -216,10 +238,10 @@ function ContatoCard({ contato, isGrupo, onVerHistorico }) {
       <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
         <span className={cn(
           'flex items-center gap-1 px-2 py-1 rounded-md font-medium',
-          totalTickets > 0 ? 'bg-primary/10 text-primary' : 'bg-[var(--color-surface-elevated)]'
+          totalChamados > 0 ? 'bg-primary/10 text-primary' : 'bg-[var(--color-surface-elevated)]'
         )}>
           <MessageSquare className="w-3 h-3" />
-          {totalTickets} {totalTickets === 1 ? 'chamado' : 'chamados'}
+          {totalChamados} {totalChamados === 1 ? 'chamado' : 'chamados'}
         </span>
 
         {contato.ultimo_contato && (

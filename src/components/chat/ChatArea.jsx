@@ -86,6 +86,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
   const [menuAnexo, setMenuAnexo] = useState(false);
   const [modalContato, setModalContato] = useState(false);
   const [contatoNome, setContatoNome] = useState('');
+  const [contatoTelefone, setContatoTelefone] = useState('');
   const [digitando, setDigitando] = useState(null);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
   const [melhorandoTexto, setMelhorandoTexto] = useState(false);
@@ -1746,6 +1747,7 @@ function Lightbox({ url, tipo, onFechar }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onFechar(); };
@@ -1772,7 +1774,7 @@ function Lightbox({ url, tipo, onFechar }) {
 
   const handleMouseUp = () => setDragging(false);
 
-  const resetZoom = () => { setZoom(1); setPos({ x: 0, y: 0 }); };
+  const resetZoom = () => { setZoom(1); setPos({ x: 0, y: 0 }); setRotation(0); };
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
@@ -1795,6 +1797,8 @@ function Lightbox({ url, tipo, onFechar }) {
             )}
           </>
         )}
+        <button onClick={(e) => { e.stopPropagation(); setRotation(r => (r + 90) % 360); }}
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-sm" title="Girar">↻</button>
         <a href={url} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
           className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
           <Download className="w-5 h-5 text-white" />
@@ -1813,7 +1817,7 @@ function Lightbox({ url, tipo, onFechar }) {
         ) : (
           <img src={url} alt="Mídia" onMouseDown={handleMouseDown} draggable={false}
             className="max-w-full max-h-[90vh] object-contain rounded-lg select-none transition-transform duration-150"
-            style={{ transform: `scale(${zoom}) translate(${pos.x / zoom}px, ${pos.y / zoom}px)` }} />
+            style={{ transform: `scale(${zoom}) rotate(${rotation}deg) translate(${pos.x / zoom}px, ${pos.y / zoom}px)` }} />
         )}
       </div>
     </div>
