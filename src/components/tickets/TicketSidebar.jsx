@@ -194,10 +194,35 @@ export default function TicketSidebar() {
     staleTime: 3000,
   });
 
+  // BUSCA GLOBAL — busca em TODOS os tickets ativos (pendente, aberto, aguardando)
+  const { data: buscaGlobalData } = useQuery({
+    queryKey: ['busca-global', filtros.busca],
+    queryFn: async () => {
+      const b = encodeURIComponent(filtros.busca);
+      // Buscar em pendente, aberto e aguardando em paralelo
+      const [pend, aberto, aguard] = await Promise.all([
+        api.get(`/api/tickets?busca=${b}&status=pendente&ordem=atividade&limite=20`),
+        api.get(`/api/tickets?busca=${b}&status=aberto&ordem=atividade&limite=20`),
+        api.get(`/api/tickets?busca=${b}&status=aguardando&ordem=atividade&limite=20`),
+      ]);
+      // Deduplicar e juntar
+      const todos = [...(pend.tickets || []), ...(aberto.tickets || []), ...(aguard.tickets || [])];
+      const vistos = new Set();
+      const unicos = todos.filter(t => { if (vistos.has(t.id)) return false; vistos.add(t.id); return true; });
+      return { tickets: unicos };
+    },
+    enabled: !!filtros.busca && filtros.busca.length >= 2,
+    staleTime: 2000,
+  });
+
   const meusChats = [...(meusChatsData?.tickets || []), ...(meusAguardandoData?.tickets || [])];
   const fila = (filaData?.tickets || []).filter((t) => !t.fila_nome || t.fila_nome !== 'Dispositivo Externo');
   const emAtendimento = emAtendimentoData?.tickets || [];
   const dispositivoExterno = dispositivoExternoData?.tickets || [];
+  const buscaGlobal = buscaGlobalData?.tickets || [];
+
+  // Se busca ativa com 2+ chars, mostrar resultados globais
+  const buscaAtiva = filtros.busca && filtros.busca.length >= 2;
 
   // Busca contatos
   const { data: contatosBusca } = useQuery({
@@ -239,8 +264,9 @@ export default function TicketSidebar() {
   const contAtendimento = emAtendimento.length;
   const contDispositivo = dispositivoExterno.length;
 
-  const ticketsExibidos =
-    abaAtiva === 'meusChats' ? meusChats
+  const ticketsExibidos = buscaAtiva
+    ? buscaGlobal
+    : abaAtiva === 'meusChats' ? meusChats
     : abaAtiva === 'fila' ? fila
     : abaAtiva === 'dispositivoExterno' ? dispositivoExterno
     : emAtendimento;
@@ -385,14 +411,20 @@ export default function TicketSidebar() {
           />
         ) : (
           <div className="py-1">
+            {buscaAtiva && (
+              <p className="px-3 py-1.5 text-2xs text-[var(--color-text-muted)] uppercase tracking-wide font-medium border-b border-[var(--color-border)]">
+                {ticketsExibidos.length} resultado{ticketsExibidos.length !== 1 ? 's' : ''}
+              </p>
+            )}
             {ticketsExibidos.map((ticket) => (
               <ChamadoCard
                 key={ticket.id}
                 ticket={ticket}
                 ativo={ticketAtivo?.id === ticket.id}
                 onClick={() => handleSelecionarTicket(ticket)}
-                mostrarAtendente={abaAtiva === 'emAtendimento'}
-                mostrarTempoEspera={abaAtiva === 'fila' || abaAtiva === 'externo'}
+                mostrarAtendente={buscaAtiva || abaAtiva === 'emAtendimento'}
+                mostrarTempoEspera={!buscaAtiva && (abaAtiva === 'fila' || abaAtiva === 'externo')}
+                mostrarStatus={buscaAtiva}
               />
             ))}
           </div>
@@ -429,8 +461,10 @@ export default function TicketSidebar() {
   );
 }
 
-function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEspera }) {
+function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEspera, mostrarStatus }) {
   const naoLidas = parseInt(ticket.nao_lidas || 0);
+  const tags = Array.isArray(ticket.tags) ? ticket.tags.filter(Boolean) : [];
+  const isUrgente = ticket.prioridade === 'alta' || ticket.prioridade === 'urgente' || tags.some(t => t?.nome?.toLowerCase() === 'urgente');
 
   // Calcular tempo de espera desde criação do ticket
   const tempoEspera = () => {
@@ -464,7 +498,7 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEsp
         'w-full text-left px-3 py-2.5 flex items-start gap-3 transition-all duration-100 border-l-3',
         ativo
           ? 'bg-primary/8 border-l-primary'
-          : ticket.prioridade === 'alta'
+          : isUrgente
             ? 'border-l-red-500 bg-red-500/5 hover:bg-red-500/10'
             : naoLidas > 0
               ? 'border-l-primary/60 bg-primary/3 hover:bg-primary/6'
@@ -476,7 +510,7 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEsp
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
-            {ticket.prioridade === 'alta' && (
+            {isUrgente && (
               <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" title="Urgente" />
             )}
             <span
@@ -535,6 +569,28 @@ function ChamadoCard({ ticket, ativo, onClick, mostrarAtendente, mostrarTempoEsp
               </div>
             )}
             <span className="text-2xs text-primary truncate">{ticket.atendente_nome}</span>
+            {mostrarStatus && (
+              <span className={cn('text-2xs px-1.5 py-0.5 rounded font-medium ml-auto',
+                ticket.status === 'pendente' ? 'bg-amber-500/15 text-amber-600' :
+                ticket.status === 'aberto' ? 'bg-blue-500/15 text-blue-600' :
+                ticket.status === 'aguardando' ? 'bg-orange-500/15 text-orange-600' :
+                'bg-neutral-500/15 text-neutral-500'
+              )}>
+                {ticket.status === 'pendente' ? 'Fila' : ticket.status === 'aberto' ? 'Aberto' : ticket.status === 'aguardando' ? 'Aguardando' : ticket.status}
+              </span>
+            )}
+          </div>
+        )}
+
+        {mostrarStatus && !ticket.atendente_nome && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className={cn('text-2xs px-1.5 py-0.5 rounded font-medium',
+              ticket.status === 'pendente' ? 'bg-amber-500/15 text-amber-600' :
+              ticket.status === 'aberto' ? 'bg-blue-500/15 text-blue-600' :
+              'bg-neutral-500/15 text-neutral-500'
+            )}>
+              {ticket.status === 'pendente' ? 'Na fila' : ticket.status}
+            </span>
           </div>
         )}
       </div>
