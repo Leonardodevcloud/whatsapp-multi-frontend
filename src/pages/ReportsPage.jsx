@@ -77,7 +77,7 @@ export default function ReportsPage() {
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard', dataInicio, dataFim, usuarioId],
     queryFn: () => api.get(`/api/reports/dashboard?${qs}`),
-    refetchInterval: 30000,
+    refetchInterval: false,
   });
   const { data: performance } = useQuery({ queryKey: ['perf', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/performance?${qs}`) });
   const { data: temposResp } = useQuery({ queryKey: ['tresp', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/tempos-resposta?${qs}`) });
