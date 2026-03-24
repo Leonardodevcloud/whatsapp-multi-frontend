@@ -2,26 +2,20 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton, Avatar } from '../components/ui';
-import { MessageSquare, Clock, Headphones, Users, CalendarDays } from 'lucide-react';
+import { MessageSquare, Clock, Headphones, Users, CalendarDays, UserCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import api from '../lib/api';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area,
-} from 'recharts';
-
-// ── Helpers ──────────────────────────────────────────────
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts';
 
 function fmtDur(seg) {
-  if (!seg) return '-';
-  seg = Math.round(seg);
+  if (!seg) return '-'; seg = Math.round(seg);
   if (seg < 60) return `${seg}s`;
   if (seg < 3600) { const m = Math.floor(seg / 60); const s = seg % 60; return s > 0 ? `${m}m ${s}s` : `${m}m`; }
   const h = Math.floor(seg / 3600); const m = Math.floor((seg % 3600) / 60); const s = seg % 60;
   let r = `${h}h`; if (m > 0) r += ` ${m}m`; if (s > 0) r += ` ${s}s`; return r;
 }
 function fmtKpi(seg) {
-  if (!seg) return '-';
-  if (seg < 60) return `${seg}s`;
+  if (!seg) return '-'; if (seg < 60) return `${seg}s`;
   if (seg < 3600) return `${Math.floor(seg / 60)}min`;
   const h = Math.floor(seg / 3600); const m = Math.floor((seg % 3600) / 60);
   return `${h}h${m > 0 ? ` ${m}min` : ''}`;
@@ -29,19 +23,15 @@ function fmtKpi(seg) {
 function fmtNum(n) { return (parseInt(n) || 0).toLocaleString('pt-BR'); }
 function fmtDia(dia) {
   if (!dia) return '';
-  // dia comes as "2026-03-22" from backend
   const parts = String(dia).split('T')[0].split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
   return dia;
 }
-
-function getDatasDefault(dias) {
+function getDatas(dias) {
   const fim = new Date(); const inicio = new Date();
   inicio.setDate(inicio.getDate() - dias);
   return { dataInicio: inicio.toISOString().split('T')[0], dataFim: fim.toISOString().split('T')[0] };
 }
-
-// ── Tooltip ─────────────────────────────────────────────
 
 function CTooltip({ active, payload, label, formatter }) {
   if (!active || !payload?.length) return null;
@@ -59,39 +49,43 @@ function CTooltip({ active, payload, label, formatter }) {
   );
 }
 
-// ── Página ───────────────────────────────────────────────
-
 export default function ReportsPage() {
   const [periodoAtivo, setPeriodoAtivo] = useState(30);
-  const [dataInicio, setDataInicio] = useState(() => getDatasDefault(30).dataInicio);
-  const [dataFim, setDataFim] = useState(() => getDatasDefault(30).dataFim);
+  const [dataInicio, setDataInicio] = useState(() => getDatas(30).dataInicio);
+  const [dataFim, setDataFim] = useState(() => getDatas(30).dataFim);
+  const [usuarioId, setUsuarioId] = useState('');
 
   const handlePeriodo = (dias) => {
     setPeriodoAtivo(dias);
-    const d = getDatasDefault(dias);
-    setDataInicio(d.dataInicio);
-    setDataFim(d.dataFim);
+    const d = getDatas(dias);
+    setDataInicio(d.dataInicio); setDataFim(d.dataFim);
   };
   const handleData = (campo, valor) => {
     setPeriodoAtivo(null);
     if (campo === 'inicio') setDataInicio(valor); else setDataFim(valor);
   };
 
-  const qs = `dataInicio=${dataInicio}&dataFim=${dataFim}`;
+  const qs = `dataInicio=${dataInicio}&dataFim=${dataFim}${usuarioId ? `&usuarioId=${usuarioId}` : ''}`;
+
+  // Lista de atendentes pro filtro
+  const { data: atendentes } = useQuery({
+    queryKey: ['atendentes-lista'],
+    queryFn: () => api.get('/api/reports/atendentes'),
+    staleTime: 60000,
+  });
 
   const { data: dashboard, isLoading } = useQuery({
-    queryKey: ['dashboard', dataInicio, dataFim],
+    queryKey: ['dashboard', dataInicio, dataFim, usuarioId],
     queryFn: () => api.get(`/api/reports/dashboard?${qs}`),
     refetchInterval: 30000,
   });
-  const { data: performance } = useQuery({ queryKey: ['perf', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/performance?${qs}`) });
-  const { data: temposResp } = useQuery({ queryKey: ['tresp', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/tempos-resposta?${qs}`) });
-  const { data: contatosUnicos } = useQuery({ queryKey: ['cunicos', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/contatos-unicos?${qs}`) });
-  const { data: temposHora } = useQuery({ queryKey: ['thora', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/tempos-hora?${qs}`) });
-  const { data: msgDia } = useQuery({ queryKey: ['msgdia', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/mensagens-dia?${qs}`) });
-  const { data: picos } = useQuery({ queryKey: ['picos', dataInicio, dataFim], queryFn: () => api.get(`/api/reports/picos-horario?${qs}`) });
+  const { data: performance } = useQuery({ queryKey: ['perf', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/performance?${qs}`) });
+  const { data: temposResp } = useQuery({ queryKey: ['tresp', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/tempos-resposta?${qs}`) });
+  const { data: contatosUnicos } = useQuery({ queryKey: ['cunicos', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/contatos-unicos?${qs}`) });
+  const { data: temposHora } = useQuery({ queryKey: ['thora', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/tempos-hora?${qs}`) });
+  const { data: msgDia } = useQuery({ queryKey: ['msgdia', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/mensagens-dia?${qs}`) });
+  const { data: picos } = useQuery({ queryKey: ['picos', dataInicio, dataFim, usuarioId], queryFn: () => api.get(`/api/reports/picos-horario?${qs}`) });
 
-  // Dados formatados
   const tmaHoras = useMemo(() => (temposHora?.por_hora || []).map(r => ({
     hora: r.label, tma: r.tma_medio || 0, tpr: r.tpr_medio || 0, chamados: r.chamados || 0,
   })), [temposHora]);
@@ -103,6 +97,11 @@ export default function ReportsPage() {
   const picosDados = useMemo(() => (picos || []).map(h => ({
     hora: h.label, chamados: h.chamados || 0, concluidos: h.concluidos || 0,
   })), [picos]);
+
+  const atendenteNome = useMemo(() => {
+    if (!usuarioId) return null;
+    return (atendentes || []).find(a => String(a.id) === String(usuarioId))?.nome;
+  }, [usuarioId, atendentes]);
 
   if (isLoading) {
     return (
@@ -120,9 +119,15 @@ export default function ReportsPage() {
     <div className="h-full overflow-y-auto scrollbar-thin p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header + Filtros */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <h1 className="text-xl font-display font-semibold">Relatórios</h1>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-display font-semibold">
+              Relatórios
+              {atendenteNome && <span className="text-primary ml-2 text-base font-normal">— {atendenteNome}</span>}
+            </h1>
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Período rápido */}
             <div className="flex gap-1 bg-[var(--color-surface-elevated)] rounded-lg p-1">
               {[7, 15, 30].map((p) => (
                 <button key={p} onClick={() => handlePeriodo(p)}
@@ -132,6 +137,7 @@ export default function ReportsPage() {
                 </button>
               ))}
             </div>
+            {/* Datas */}
             <div className="flex items-center gap-1.5">
               <CalendarDays className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
               <input type="date" value={dataInicio} onChange={e => handleData('inicio', e.target.value)}
@@ -139,6 +145,21 @@ export default function ReportsPage() {
               <span className="text-xs text-[var(--color-text-muted)]">—</span>
               <input type="date" value={dataFim} onChange={e => handleData('fim', e.target.value)}
                 className="bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-md px-2 py-1 text-xs" />
+            </div>
+            {/* Filtro atendente */}
+            <div className="flex items-center gap-1.5">
+              <UserCircle className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+              <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)}
+                className="bg-[var(--color-surface-elevated)] border border-[var(--color-border)] rounded-md px-2 py-1 text-xs min-w-[140px]">
+                <option value="">Todos os atendentes</option>
+                {(atendentes || []).map(a => (
+                  <option key={a.id} value={a.id}>{a.nome}</option>
+                ))}
+              </select>
+              {usuarioId && (
+                <button onClick={() => setUsuarioId('')}
+                  className="text-2xs text-primary hover:underline">Limpar</button>
+              )}
             </div>
           </div>
         </div>
@@ -157,10 +178,10 @@ export default function ReportsPage() {
           <MiniCard label="Mensagens" valor={fmtNum(msgDia?.total)} cor="bg-violet-500" />
         </div>
 
-        {/* TMA e TPR por hora do dia */}
+        {/* TMA e TPR por hora */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <h3 className="text-sm font-semibold mb-1">Tempo médio de atendimento por hora</h3>
+            <h3 className="text-sm font-semibold mb-1">TMA por hora</h3>
             <p className="text-xs text-primary font-semibold mb-3">Média geral: {fmtDur(temposHora?.tma_geral)}</p>
             <ResponsiveContainer width="100%" height={tmaHoras.length * 28 + 30} minHeight={120}>
               <BarChart data={tmaHoras} layout="vertical" margin={{ left: 5, right: 5, top: 5, bottom: 5 }}>
@@ -173,7 +194,7 @@ export default function ReportsPage() {
             </ResponsiveContainer>
           </Card>
           <Card>
-            <h3 className="text-sm font-semibold mb-1">Tempo de primeira resposta por hora</h3>
+            <h3 className="text-sm font-semibold mb-1">TPR por hora</h3>
             <p className="text-xs text-primary font-semibold mb-3">Média geral: {fmtDur(temposHora?.tpr_geral)}</p>
             <ResponsiveContainer width="100%" height={tmaHoras.length * 28 + 30} minHeight={120}>
               <BarChart data={tmaHoras} layout="vertical" margin={{ left: 5, right: 5, top: 5, bottom: 5 }}>
@@ -187,12 +208,10 @@ export default function ReportsPage() {
           </Card>
         </div>
 
-        {/* Mensagens por dia — barras horizontais agrupadas */}
+        {/* Mensagens */}
         <Card>
           <h3 className="text-sm font-semibold mb-1">Quantidade de mensagens</h3>
-          <p className="text-xs text-primary font-semibold mb-3">
-            Total: {fmtNum(msgDia?.total)} · Enviadas: {fmtNum(msgDia?.enviadas)} · Recebidas: {fmtNum(msgDia?.recebidas)}
-          </p>
+          <p className="text-xs text-primary font-semibold mb-3">Total: {fmtNum(msgDia?.total)} · Enviadas: {fmtNum(msgDia?.enviadas)} · Recebidas: {fmtNum(msgDia?.recebidas)}</p>
           <ResponsiveContainer width="100%" height={msgDados.length * 50 + 40} minHeight={150}>
             <BarChart data={msgDados} layout="vertical" margin={{ left: 5, right: 10, top: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
@@ -207,10 +226,10 @@ export default function ReportsPage() {
           </ResponsiveContainer>
         </Card>
 
-        {/* Pico de atendimento */}
+        {/* Pico */}
         <Card>
           <h3 className="text-sm font-semibold mb-1">Pico de atendimento</h3>
-          <p className="text-xs text-[var(--color-text-muted)] mb-3">Chamados abertos por hora (08h — 18h) · Seg-Sex + Sáb manhã</p>
+          <p className="text-xs text-[var(--color-text-muted)] mb-3">Chamados por hora (08h — 18h) · Seg-Sex + Sáb manhã</p>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={picosDados} margin={{ left: 0, right: 10, top: 5, bottom: 5 }}>
               <defs>
@@ -243,45 +262,46 @@ export default function ReportsPage() {
           </ResponsiveContainer>
         </Card>
 
-        {/* Performance */}
-        <Card>
-          <h3 className="text-sm font-semibold mb-4">Performance dos atendentes</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-                  <th className="text-left py-2 pr-4">Atendente</th>
-                  <th className="text-right py-2 px-3">Chamados</th>
-                  <th className="text-right py-2 px-3">TPR</th>
-                  <th className="text-right py-2 px-3">TMA</th>
-                  <th className="text-right py-2 pl-3">Ativos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(performance || []).map(a => (
-                  <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-elevated)] transition-colors">
-                    <td className="py-2.5 pr-4">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar nome={a.nome} size="sm" online={a.online} src={a.avatar_url} />
-                        <span className="font-medium">{a.nome}</span>
-                      </div>
-                    </td>
-                    <td className="text-right px-3 font-medium">{a.chamados}</td>
-                    <td className="text-right px-3 text-[var(--color-text-muted)]">{fmtKpi(a.tpr_medio)}</td>
-                    <td className="text-right px-3 text-[var(--color-text-muted)]">{fmtKpi(a.tma_medio)}</td>
-                    <td className="text-right pl-3">{a.tickets_ativos}</td>
+        {/* Performance — esconde se filtro de atendente está ativo */}
+        {!usuarioId && (
+          <Card>
+            <h3 className="text-sm font-semibold mb-4">Performance dos atendentes</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
+                    <th className="text-left py-2 pr-4">Atendente</th>
+                    <th className="text-right py-2 px-3">Chamados</th>
+                    <th className="text-right py-2 px-3">TPR</th>
+                    <th className="text-right py-2 px-3">TMA</th>
+                    <th className="text-right py-2 pl-3">Ativos</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                </thead>
+                <tbody>
+                  {(performance || []).map(a => (
+                    <tr key={a.id} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-surface-elevated)] transition-colors cursor-pointer"
+                      onClick={() => setUsuarioId(String(a.id))}>
+                      <td className="py-2.5 pr-4">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar nome={a.nome} size="sm" online={a.online} src={a.avatar_url} />
+                          <span className="font-medium">{a.nome}</span>
+                        </div>
+                      </td>
+                      <td className="text-right px-3 font-medium">{a.chamados}</td>
+                      <td className="text-right px-3 text-[var(--color-text-muted)]">{fmtKpi(a.tpr_medio)}</td>
+                      <td className="text-right px-3 text-[var(--color-text-muted)]">{fmtKpi(a.tma_medio)}</td>
+                      <td className="text-right pl-3">{a.tickets_ativos}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
-
-// ── Componentes ─────────────────────────────────────────
 
 function Card({ children }) {
   return <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5">{children}</div>;
