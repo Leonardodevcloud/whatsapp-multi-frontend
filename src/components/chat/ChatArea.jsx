@@ -1341,7 +1341,7 @@ export default function ChatArea({ onTogglePainel, painelAberto }) {
                   {[
                     { icon: Image, label: 'Foto', accept: 'image/*', tipo: 'imagem' },
                     { icon: Video, label: 'Vídeo', accept: 'video/*', tipo: 'video' },
-                    { icon: FileText, label: 'Documento', accept: '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip', tipo: 'documento' },
+                    { icon: FileText, label: 'Documento', accept: '.pdf,.doc,.docx,.xls,.xlsx,.xml,.txt,.csv,.zip,.rar,.7z,.ppt,.pptx,.json,.html,.rtf', tipo: 'documento' },
                   ].map(({ icon: Icon, label, accept, tipo }) => (
                     <label key={label} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--color-surface-elevated)]">
                       <Icon className="w-4 h-4 text-primary" /> {label}
@@ -1756,13 +1756,14 @@ function Lightbox({ url, tipo, onFechar }) {
   }, [onFechar]);
 
   const handleWheel = (e) => {
+    e.preventDefault();
     e.stopPropagation();
     const delta = e.deltaY > 0 ? -0.15 : 0.15;
-    setZoom(z => Math.max(0.5, Math.min(5, z + delta)));
+    setZoom(z => Math.max(0.5, Math.min(8, z + delta)));
   };
 
   const handleMouseDown = (e) => {
-    if (zoom <= 1) return;
+    e.preventDefault();
     setDragging(true);
     setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
   };
@@ -1776,6 +1777,12 @@ function Lightbox({ url, tipo, onFechar }) {
 
   const resetZoom = () => { setZoom(1); setPos({ x: 0, y: 0 }); setRotation(0); };
 
+  // Duplo clique: alterna entre 1x e 2.5x
+  const handleDoubleClick = (e) => {
+    e.stopPropagation();
+    if (zoom > 1) { resetZoom(); } else { setZoom(2.5); }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
       onClick={() => { if (zoom <= 1) onFechar(); }}
@@ -1785,7 +1792,7 @@ function Lightbox({ url, tipo, onFechar }) {
       <div className="absolute top-4 right-4 flex gap-2 z-10">
         {tipo !== 'video' && (
           <>
-            <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(5, z + 0.5)); }}
+            <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(8, z + 0.5)); }}
               className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg font-bold">+</button>
             <button onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.5, z - 0.5)); }}
               className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg font-bold">−</button>
@@ -1795,10 +1802,10 @@ function Lightbox({ url, tipo, onFechar }) {
                 {Math.round(zoom * 100)}%
               </button>
             )}
+            <button onClick={(e) => { e.stopPropagation(); setRotation(r => (r + 90) % 360); }}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-sm" title="Girar">↻</button>
           </>
         )}
-        <button onClick={(e) => { e.stopPropagation(); setRotation(r => (r + 90) % 360); }}
-          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-sm" title="Girar">↻</button>
         <a href={url} download target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
           className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
           <Download className="w-5 h-5 text-white" />
@@ -1808,16 +1815,30 @@ function Lightbox({ url, tipo, onFechar }) {
         </button>
       </div>
 
-      {/* Conteúdo */}
+      {/* Conteúdo — sem overflow-hidden, imagem se move livremente */}
       <div onClick={(e) => e.stopPropagation()} onWheel={handleWheel}
-        className="max-w-[90vw] max-h-[90vh] overflow-hidden"
-        style={{ cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default' }}>
+        className="flex items-center justify-center"
+        style={{
+          width: '100vw', height: '100vh',
+          cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default',
+        }}>
         {tipo === 'video' ? (
-          <video controls autoPlay className="max-w-full max-h-[90vh] rounded-lg"><source src={url} /></video>
+          <video controls autoPlay className="max-w-[90vw] max-h-[90vh] rounded-lg"><source src={url} /></video>
         ) : (
-          <img src={url} alt="Mídia" onMouseDown={handleMouseDown} draggable={false}
-            className="max-w-full max-h-[90vh] object-contain rounded-lg select-none transition-transform duration-150"
-            style={{ transform: `scale(${zoom}) rotate(${rotation}deg) translate(${pos.x / zoom}px, ${pos.y / zoom}px)` }} />
+          <img src={url} alt="Mídia"
+            onMouseDown={handleMouseDown}
+            onDoubleClick={handleDoubleClick}
+            draggable={false}
+            className="select-none"
+            style={{
+              maxWidth: zoom <= 1 ? '90vw' : 'none',
+              maxHeight: zoom <= 1 ? '90vh' : 'none',
+              objectFit: 'contain',
+              borderRadius: '8px',
+              transition: dragging ? 'none' : 'transform 0.15s ease-out',
+              transform: `translate(${pos.x}px, ${pos.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: 'center center',
+            }} />
         )}
       </div>
     </div>
@@ -2216,24 +2237,28 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
         </div>
       );
 
-    case 'documento':
+    case 'documento': {
+      const nomeArquivo = mensagem.media_nome || corpo || 'Documento';
+      const ext = nomeArquivo.split('.').pop()?.toLowerCase() || '';
+      const iconeDoc = ext === 'pdf' ? '📕' : ext === 'xml' ? '📋' : (ext === 'xls' || ext === 'xlsx') ? '📊' : (ext === 'doc' || ext === 'docx') ? '📘' : (ext === 'zip' || ext === 'rar' || ext === '7z') ? '📦' : (ext === 'ppt' || ext === 'pptx') ? '📙' : ext === 'csv' ? '📊' : '📄';
       return (
         <div className="px-4 pt-2">
           {mediaUrl ? (
-            <a href={mediaUrl} target="_blank" rel="noopener noreferrer"
+            <a href={mediaUrl} download={nomeArquivo} target="_blank" rel="noopener noreferrer"
               className={cn('flex items-center gap-3 p-3 rounded-lg', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
-              <span className="text-2xl">📄</span>
+              <span className="text-2xl">{iconeDoc}</span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{corpo || 'Documento'}</p>
-                <p className="text-2xs opacity-60">Clique para baixar</p>
+                <p className="text-sm font-medium truncate">{nomeArquivo}</p>
+                <p className="text-2xs opacity-60">{ext.toUpperCase()} · Clique para baixar</p>
               </div>
-              <Download className="w-4 h-4 opacity-60" />
+              <Download className="w-4 h-4 opacity-60 shrink-0" />
             </a>
           ) : (
-            <div className="flex items-center gap-2"><span>📄</span><span className="text-sm opacity-80">{corpo || 'Documento'}</span></div>
+            <div className="flex items-center gap-2"><span>{iconeDoc}</span><span className="text-sm opacity-80">{nomeArquivo}</span></div>
           )}
         </div>
       );
+    }
 
     case 'localizacao': {
       const match = corpo?.match(/([-\d.]+),\s*([-\d.]+)/);
