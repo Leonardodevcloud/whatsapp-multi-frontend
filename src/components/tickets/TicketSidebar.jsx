@@ -42,7 +42,7 @@ export default function TicketSidebar() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setFiltro('busca', buscaLocal), 500);
+    const timer = setTimeout(() => setFiltro('busca', buscaLocal), 300);
     return () => clearTimeout(timer);
   }, [buscaLocal]);
 
@@ -194,10 +194,23 @@ export default function TicketSidebar() {
     staleTime: 30000,
   });
 
-  // BUSCA GLOBAL — busca em TODOS os tickets ativos (1 request em vez de 3)
+  // BUSCA GLOBAL — busca em TODOS os tickets ativos (pendente, aberto, aguardando)
   const { data: buscaGlobalData } = useQuery({
     queryKey: ['busca-global', filtros.busca],
-    queryFn: () => api.get(`/api/tickets?busca=${encodeURIComponent(filtros.busca)}&ordem=atividade&limite=50`),
+    queryFn: async () => {
+      const b = encodeURIComponent(filtros.busca);
+      // Buscar em pendente, aberto e aguardando em paralelo
+      const [pend, aberto, aguard] = await Promise.all([
+        api.get(`/api/tickets?busca=${b}&status=pendente&ordem=atividade&limite=20`),
+        api.get(`/api/tickets?busca=${b}&status=aberto&ordem=atividade&limite=20`),
+        api.get(`/api/tickets?busca=${b}&status=aguardando&ordem=atividade&limite=20`),
+      ]);
+      // Deduplicar e juntar
+      const todos = [...(pend.tickets || []), ...(aberto.tickets || []), ...(aguard.tickets || [])];
+      const vistos = new Set();
+      const unicos = todos.filter(t => { if (vistos.has(t.id)) return false; vistos.add(t.id); return true; });
+      return { tickets: unicos };
+    },
     enabled: !!filtros.busca && filtros.busca.length >= 2,
     staleTime: 15000,
   });
