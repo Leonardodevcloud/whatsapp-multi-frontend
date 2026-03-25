@@ -2059,6 +2059,7 @@ function ChatBubble({ mensagem, onLightbox, modoEncaminhar, onIniciarEncaminhar,
               enviada={enviada}
               onLightbox={onLightbox}
               mensagemId={mensagem.id}
+              mediaNome={mensagem.media_nome}
               onFavoritarSticker={onFavoritarSticker}
               favoritosUrls={favoritosUrls}
               buscaTermo={buscaTermo}
@@ -2207,7 +2208,7 @@ function LazyVideo({ mediaUrl, corpo, onLightbox, enviada }) {
 }
 
 // ============ MEDIA CONTENT — com fix video (item 3) + sticker favoritar (item 6) ============
-function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, onFavoritarSticker, favoritosUrls, buscaTermo }) {
+function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, mediaNome, onFavoritarSticker, favoritosUrls, buscaTermo }) {
   switch (tipo) {
     case 'imagem':
       return (
@@ -2238,7 +2239,7 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
       );
 
     case 'documento': {
-      const nomeArquivo = mensagem.media_nome || corpo || 'Documento';
+      const nomeArquivo = mediaNome || corpo || 'Documento';
       const ext = nomeArquivo.split('.').pop()?.toLowerCase() || '';
       const iconeDoc = ext === 'pdf' ? '📕' : ext === 'xml' ? '📋' : (ext === 'xls' || ext === 'xlsx') ? '📊' : (ext === 'doc' || ext === 'docx') ? '📘' : (ext === 'zip' || ext === 'rar' || ext === '7z') ? '📦' : (ext === 'ppt' || ext === 'pptx') ? '📙' : ext === 'csv' ? '📊' : '📄';
       return (
