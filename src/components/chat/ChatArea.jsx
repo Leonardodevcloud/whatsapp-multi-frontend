@@ -2242,18 +2242,39 @@ function MediaContent({ tipo, corpo, mediaUrl, enviada, onLightbox, mensagemId, 
       const nomeArquivo = mediaNome || corpo || 'Documento';
       const ext = nomeArquivo.split('.').pop()?.toLowerCase() || '';
       const iconeDoc = ext === 'pdf' ? '📕' : ext === 'xml' ? '📋' : (ext === 'xls' || ext === 'xlsx') ? '📊' : (ext === 'doc' || ext === 'docx') ? '📘' : (ext === 'zip' || ext === 'rar' || ext === '7z') ? '📦' : (ext === 'ppt' || ext === 'pptx') ? '📙' : ext === 'csv' ? '📊' : '📄';
+
+      const forcarDownload = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const resp = await fetch(mediaUrl);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = nomeArquivo;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch {
+          // Fallback: abrir em nova aba
+          window.open(mediaUrl, '_blank');
+        }
+      };
+
       return (
         <div className="px-4 pt-2">
           {mediaUrl ? (
-            <a href={mediaUrl} download={nomeArquivo} target="_blank" rel="noopener noreferrer"
-              className={cn('flex items-center gap-3 p-3 rounded-lg', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
+            <button onClick={forcarDownload}
+              className={cn('flex items-center gap-3 p-3 rounded-lg w-full text-left', enviada ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10 dark:bg-white/5')}>
               <span className="text-2xl">{iconeDoc}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{nomeArquivo}</p>
                 <p className="text-2xs opacity-60">{ext.toUpperCase()} · Clique para baixar</p>
               </div>
               <Download className="w-4 h-4 opacity-60 shrink-0" />
-            </a>
+            </button>
           ) : (
             <div className="flex items-center gap-2"><span>{iconeDoc}</span><span className="text-sm opacity-80">{nomeArquivo}</span></div>
           )}
